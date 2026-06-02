@@ -1,9 +1,10 @@
 "use client";
 import { COLORS } from "@/constants/Constant";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
+import { driversApi } from "@/services/api/drivers";
 import {
   ChevronRight,
   AlertTriangle,
@@ -30,10 +31,34 @@ import DriverAgreements from "@/components/DriverAgreements";
 
 export default function DriverProfilePage() {
   const router = useRouter();
+  const params = useParams();
+  const driverId = params?.id as string;
+  const [driver, setDriver] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!driverId) return;
+    const fetchDriver = async () => {
+      try {
+        setLoading(true);
+        const res = await driversApi.getDriverById(driverId);
+        if (res.success) {
+          setDriver(res.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch driver:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDriver();
+  }, [driverId]);
+
   const [activeTab, setActiveTab] = useState<
     | "Profile Details"
     | "KYC Verification Queue"
     | "Payments"
+    | "Driver Documents"
     | "Agreements"
     | "Audit & Activity"
     | "Notes"
@@ -43,11 +68,40 @@ export default function DriverProfilePage() {
     "Profile Details",
     "KYC Verification Queue",
     "Payments",
+    "Driver Documents",
     "Agreements",
     "Audit & Activity",
   ];
 
-  //TODO: Data should be coming from previous page and API
+  if (loading) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center" }}>
+        Loading driver profile...
+      </div>
+    );
+  }
+
+  if (!driver) {
+    return (
+      <div
+        style={{
+          padding: "2rem",
+          textAlign: "center",
+          color: COLORS.ERROR_MAIN,
+        }}
+      >
+        Driver not found
+      </div>
+    );
+  }
+
+  const {
+    personalInformation,
+    systemInformation,
+    addressInformation,
+    documentInformation,
+    complianceStatus,
+  } = driver;
 
   return (
     <div
@@ -100,11 +154,16 @@ export default function DriverProfilePage() {
           <h4
             style={{ fontSize: "0.85rem", fontWeight: 700, color: "#9A3412" }}
           >
-            Driver licence expires in 15 days
+            Driver licence expiry
           </h4>
           <p style={{ fontSize: "0.8rem", color: "#C2410C" }}>
-            Licence expires on 2024-02-10. Please notify driver to renew before
-            expiry.
+            Licence expires on{" "}
+            {documentInformation?.licenceExpiryDate
+              ? new Date(
+                  documentInformation.licenceExpiryDate,
+                ).toLocaleDateString()
+              : "--"}
+            . Please notify driver to renew before expiry.
           </p>
         </div>
       </div>
@@ -121,20 +180,17 @@ export default function DriverProfilePage() {
           <div
             style={{ display: "flex", gap: "1.25rem", alignItems: "center" }}
           >
-            <div style={{ position: "relative" }}>
-              <img
-                src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150"
-                alt="Profile"
-                style={{
-                  width: "95px",
-                  height: "95px",
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  border: "2px solid white",
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                }}
-              />
-            </div>
+            <div
+              style={{
+                position: "relative",
+                width: "95px",
+                height: "95px",
+                borderRadius: "50%",
+                background: COLORS.PRIMARY_LIGHT,
+                borderWidth: "2px",
+                borderColor: COLORS.PRIMARY_MAIN,
+              }}
+            ></div>
             <div
               style={{
                 display: "flex",
@@ -143,7 +199,7 @@ export default function DriverProfilePage() {
               }}
             >
               <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>
-                Michael Johnson
+                {personalInformation?.firstName} {personalInformation?.lastName}
               </h2>
               <div
                 style={{
@@ -161,9 +217,9 @@ export default function DriverProfilePage() {
                     gap: "0.35rem",
                   }}
                 >
-                  <Mail size={14} /> michael.johnson@email.com
+                  <Mail size={14} /> {personalInformation?.email}
                 </span>
-                <span>Driver ID: DRV-2024-001234</span>
+                <span>Driver ID: {systemInformation?.driverId}</span>
               </div>
               <div
                 style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}
@@ -341,17 +397,38 @@ export default function DriverProfilePage() {
                   }}
                 >
                   <div>
-                    <LabelValue label="First Name" value="Michael" />
-                    <LabelValue label="Last Name" value="Johnson" />
+                    <LabelValue
+                      label="First Name"
+                      value={personalInformation?.firstName || "--"}
+                    />
+                    <LabelValue
+                      label="Last Name"
+                      value={personalInformation?.lastName || "--"}
+                    />
                     <LabelValue
                       label="Email"
-                      value="michael.johnson@email.com"
+                      value={personalInformation?.email || "--"}
                     />
                   </div>
                   <div>
-                    <LabelValue label="Middle Name" value="David" />
-                    <LabelValue label="Date of Birth" value="1985-03-15" />
-                    <LabelValue label="Phone Number" value="+61 412 345 678" />
+                    <LabelValue
+                      label="Middle Name"
+                      value={personalInformation?.middleName || "--"}
+                    />
+                    <LabelValue
+                      label="Date of Birth"
+                      value={
+                        personalInformation?.dob
+                          ? new Date(
+                              personalInformation.dob,
+                            ).toLocaleDateString()
+                          : "--"
+                      }
+                    />
+                    <LabelValue
+                      label="Phone Number"
+                      value={personalInformation?.phone || "--"}
+                    />
                   </div>
                 </div>
               </div>
@@ -379,15 +456,30 @@ export default function DriverProfilePage() {
                   <div>
                     <LabelValue
                       label="Address Line 1"
-                      value="123 Harmony Street"
+                      value={addressInformation?.addressLine1 || "--"}
                     />
-                    <LabelValue label="City" value="Sydney" />
-                    <LabelValue label="Postal Code" value="2000" />
+                    <LabelValue
+                      label="City"
+                      value={addressInformation?.city || "--"}
+                    />
+                    <LabelValue
+                      label="Postal Code"
+                      value={addressInformation?.postalCode || "--"}
+                    />
                   </div>
                   <div>
-                    <LabelValue label="Address Line 2" value="Apt 4B" />
-                    <LabelValue label="State" value="New South Wales" />
-                    <LabelValue label="Country" value="Australia" />
+                    <LabelValue
+                      label="Address Line 2"
+                      value={addressInformation?.addressLine2 || "--"}
+                    />
+                    <LabelValue
+                      label="State"
+                      value={addressInformation?.state || "--"}
+                    />
+                    <LabelValue
+                      label="Country"
+                      value={addressInformation?.country || "--"}
+                    />
                   </div>
                 </div>
               </div>
@@ -415,10 +507,16 @@ export default function DriverProfilePage() {
                   <div>
                     <LabelValue
                       label="Driver's Licence Number"
-                      value="VIC123456789"
+                      value={documentInformation?.driverLicenceNumber || "--"}
                     />
-                    <LabelValue label="Passport Number" value="A1234567" />
-                    <LabelValue label="ABN" value="12 345 678 901" />
+                    <LabelValue
+                      label="Passport Number"
+                      value={documentInformation?.passportNumber || "--"}
+                    />
+                    <LabelValue
+                      label="ABN"
+                      value={documentInformation?.abn || "--"}
+                    />
                   </div>
                   <div>
                     <div style={{ marginBottom: "1rem" }}>
@@ -439,12 +537,22 @@ export default function DriverProfilePage() {
                           color: "#DC2626",
                         }}
                       >
-                        2024-02-10
+                        {documentInformation?.licenceExpiryDate
+                          ? new Date(
+                              documentInformation.licenceExpiryDate,
+                            ).toLocaleDateString()
+                          : "--"}
                       </p>
                     </div>
                     <LabelValue
                       label="Visa Expiry Date"
-                      value="Not Required (Local Driver)"
+                      value={
+                        documentInformation?.visaExpiryDate
+                          ? new Date(
+                              documentInformation.visaExpiryDate,
+                            ).toLocaleDateString()
+                          : "--"
+                      }
                     />
                   </div>
                 </div>
@@ -577,7 +685,7 @@ export default function DriverProfilePage() {
                       Driver ID
                     </span>
                     <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>
-                      DRV-2024-001234
+                      {systemInformation?.driverId || "--"}
                     </span>
                   </div>
                   <div
@@ -596,10 +704,14 @@ export default function DriverProfilePage() {
                       KYC Status
                     </span>
                     <span
-                      className="badge badge-success"
+                      className={
+                        systemInformation?.kycStatus === "Verified"
+                          ? "badge badge-success"
+                          : "badge badge-warning"
+                      }
                       style={{ fontSize: "0.65rem" }}
                     >
-                      Verified
+                      {systemInformation?.kycStatus || "--"}
                     </span>
                   </div>
                   <div
@@ -618,10 +730,14 @@ export default function DriverProfilePage() {
                       Account Status
                     </span>
                     <span
-                      className="badge badge-success"
+                      className={
+                        systemInformation?.accountStatus === "Active"
+                          ? "badge badge-success"
+                          : "badge badge-warning"
+                      }
                       style={{ fontSize: "0.65rem" }}
                     >
-                      Active
+                      {systemInformation?.accountStatus || "--"}
                     </span>
                   </div>
                   <div
@@ -643,7 +759,11 @@ export default function DriverProfilePage() {
                       <Calendar size={14} /> Date Joined
                     </span>
                     <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-                      2024-01-15
+                      {systemInformation?.dateJoined
+                        ? new Date(
+                            systemInformation.dateJoined,
+                          ).toLocaleDateString()
+                        : "--"}
                     </span>
                   </div>
                   <div
@@ -665,7 +785,9 @@ export default function DriverProfilePage() {
                       <Clock size={14} /> Last Login
                     </span>
                     <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-                      2024-01-26 14:30
+                      {systemInformation?.lastLogin
+                        ? new Date(systemInformation.lastLogin).toLocaleString()
+                        : "--"}
                     </span>
                   </div>
                   <div
@@ -687,7 +809,7 @@ export default function DriverProfilePage() {
                       <CreditCard size={14} /> Linked Payment
                     </span>
                     <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
-                      **** 4532 (Visa)
+                      {systemInformation?.linkedPayment || "--"}
                     </span>
                   </div>
                 </div>
@@ -750,9 +872,18 @@ export default function DriverProfilePage() {
                     </div>
                   </div>
                   {[
-                    { label: "Identity Verification", status: "Verified" },
-                    { label: "Address Verification", status: "Verified" },
-                    { label: "Payment Setup", status: "Complete" },
+                    {
+                      label: "Identity Verification",
+                      status: complianceStatus?.identityVerification || "--",
+                    },
+                    {
+                      label: "Address Verification",
+                      status: complianceStatus?.addressVerification || "--",
+                    },
+                    {
+                      label: "Payment Setup",
+                      status: complianceStatus?.paymentSetup || "--",
+                    },
                   ].map((item, i) => (
                     <div
                       key={i}
@@ -771,7 +902,12 @@ export default function DriverProfilePage() {
                         {item.label}
                       </span>
                       <span
-                        className="badge badge-success"
+                        className={
+                          item.status === "Verified" ||
+                          item.status === "Complete"
+                            ? "badge badge-success"
+                            : "badge badge-warning"
+                        }
                         style={{
                           fontSize: "0.65rem",
                           display: "flex",
@@ -780,7 +916,12 @@ export default function DriverProfilePage() {
                           padding: "4px 12px",
                         }}
                       >
-                        <CircleCheck size={14} />
+                        {item.status === "Verified" ||
+                        item.status === "Complete" ? (
+                          <CircleCheck size={14} />
+                        ) : (
+                          <AlertTriangle size={14} />
+                        )}
                         {item.status}
                       </span>
                     </div>

@@ -284,9 +284,9 @@ export default function DriversPage() {
                   </tr>
                 ) : drivers.map((driver, i) => (
                   <tr
-                    key={driver._id}
+                    key={driver._id || driver.driverId || (driver as any).id || i}
                     style={{ borderBottom: i === drivers.length - 1 ? "none" : `1px solid ${COLORS.BORDER_MAIN}`, cursor: "pointer" }}
-                    onClick={() => router.push(`/drivers/${driver._id}`)}
+                    onClick={() => router.push(`/drivers/${driver._id || driver.driverId || (driver as any).id}`)}
                   >
                     <td style={{ padding: "0.75rem 1rem" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
