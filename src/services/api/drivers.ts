@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, apiDownloadPost } from "./client";
 
 type ApiResponse<T> = { success: boolean; data: T; message?: string };
 
@@ -115,10 +115,10 @@ export const driversApi = {
   },
 
   exportDrivers: async (payload: Record<string, unknown>) =>
-    apiFetch<ApiResponse<{ message: string }>>("/admin/export/drivers", {
-      method: "POST",
-      body: payload,
-    }),
+    apiDownloadPost("/admin/export/drivers", payload),
+
+  getExportHistory: async () =>
+    apiFetch<ApiResponse<any[]>>("/admin/export/history"),
 
   getKycQueue: async (
     filters: { page?: number; limit?: number; status?: string } = {},
@@ -132,4 +132,20 @@ export const driversApi = {
       `/admin/kyc/queue${qs ? `?${qs}` : ""}`,
     );
   },
+
+  getDriverDocuments: async (driverId: string) => 
+    apiFetch<ApiResponse<any>>(`/admin/drivers/${driverId}/documents`),
+
+  updateDriverDocumentStatus: async (driverId: string, docId: string, payload: { status: string; reason?: string }) =>
+    apiFetch<ApiResponse<any>>(`/admin/drivers/${driverId}/documents/${docId}/status`, {
+      method: "PATCH",
+      body: payload
+    }),
+
+  addDriverNote: async (driverId: string, payload: { text: string }) =>
+    apiFetch<ApiResponse<any>>(`/admin/drivers/${driverId}/notes`, {
+      method: "POST",
+      body: payload
+    })
 };
+

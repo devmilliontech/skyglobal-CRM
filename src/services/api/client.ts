@@ -115,6 +115,41 @@ export const apiDownload = async (path: string): Promise<Blob> => {
   return response.blob();
 };
 
+export const apiDownloadPost = async (path: string, body: unknown): Promise<Blob> => {
+  const url = `${API_BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+  const headers = new Headers({
+    "Content-Type": "application/json",
+  });
+
+  const token = getAuthToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    body: JSON.stringify(body),
+    credentials: "include",
+    headers,
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("admin_token");
+      localStorage.removeItem("token");
+      localStorage.removeItem("jwt");
+      window.location.href = "/signin";
+    }
+    throw new Error("Unauthorized");
+  }
+
+  if (!response.ok) {
+    throw new Error("Download failed");
+  }
+  return response.blob();
+};
+
+
 /* ────────────────────────────────────────────
  * Utility helpers for QA / data mapping
  * ──────────────────────────────────────────── */

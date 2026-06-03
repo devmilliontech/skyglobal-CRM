@@ -28,6 +28,7 @@ import KYCVerificationQueue from "@/components/KYCVerificationQueue";
 import DriverPayments from "@/components/DriverPayments";
 import DriverAuditActivity from "@/components/DriverAuditActivity";
 import DriverAgreements from "@/components/DriverAgreements";
+import DriverDocuments from "@/components/DriverDocuments";
 
 export default function DriverProfilePage() {
   const router = useRouter();
@@ -1061,6 +1062,12 @@ export default function DriverProfilePage() {
           </div>
         )}
 
+        {activeTab === "Driver Documents" && (
+          <div className="animate-fade-in">
+            <DriverDocuments driverId={driverId} />
+          </div>
+        )}
+
         {activeTab === "Agreements" && (
           <div className="animate-fade-in">
             <DriverAgreements />
@@ -1078,6 +1085,7 @@ export default function DriverProfilePage() {
         {activeTab !== "Profile Details" &&
           activeTab !== "KYC Verification Queue" &&
           activeTab !== "Payments" &&
+          activeTab !== "Driver Documents" &&
           activeTab !== "Agreements" &&
           activeTab !== "Audit & Activity" && (
             <div
