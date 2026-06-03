@@ -105,7 +105,7 @@ export default function ProfilePage() {
             action: "Logout",
             icon:
               (s.device || "").toLowerCase().includes("phone") ||
-              (s.device || "").toLowerCase().includes("iphone")
+                (s.device || "").toLowerCase().includes("iphone")
                 ? Smartphone
                 : Monitor,
           }));
@@ -605,7 +605,7 @@ export default function ProfilePage() {
                 <div style={{ position: "relative" }}>
                   <InputField
                     label="Email Address *"
-                    value={profileData?.email || "admin@example.com"}
+                    value={profileData?.email || "dev@millionhits.net.au"}
                     readOnly
                   />
                   <span

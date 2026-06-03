@@ -13,9 +13,68 @@ import {
   MapPin,
   ShieldCheck,
   ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { usersApi } from "@/services/api/users";
+import PageHeader from "@/components/PageHeader";
+import SideModal, { CreateUserFormData } from "@/components/SideModal";
+import SelectField from "@/components/SelectField";
+import { User, UserStats, usersApi } from "@/services/api/users";
+
+type UserLastLogin = {
+  date: string;
+  time: string;
+  ip?: string;
+};
+
+type RawUser = User & {
+  id?: string | number;
+  initials?: string;
+  location?: string;
+  security?: string;
+  lastLogin?: UserLastLogin;
+  isBlocked?: boolean;
+};
+
+type UserRow = RawUser & {
+  id: string | number;
+  name: string;
+  email: string;
+  avatar: string;
+  role: string;
+  location: string;
+  security: string;
+  lastLogin: UserLastLogin;
+  status: "Active" | "Suspended";
+};
+
+type UsersPaginationPayload = {
+  stats?: UserStats;
+  users?: RawUser[];
+  data?: RawUser[];
+  pagination?: {
+    total?: number;
+    totalDocuments?: number;
+    totalUsers?: number;
+    page?: number;
+    currentPage?: number;
+    pages?: number;
+    totalPages?: number;
+  };
+  total?: number;
+  page?: number;
+  pages?: number;
+};
+
+type StatCardProps = {
+  label: string;
+  value: string;
+  trend: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  iconColor: string;
+  trendColor?: string;
+};
 
 const usersDataFallback = [
   {
@@ -147,74 +206,128 @@ const usersDataFallback = [
   },
 ];
 
-import PageHeader from "@/components/PageHeader";
-import SideModal, { CreateUserFormData } from "@/components/SideModal";
-import SelectField from "@/components/SelectField";
+const USERS_PAGE_LIMIT = 10;
+
+const normalizePagination = (
+  payload: UsersPaginationPayload,
+  fallbackPage: number,
+) => {
+  const pagination = payload?.pagination || {};
+  const total =
+    pagination.total ??
+    pagination.totalDocuments ??
+    pagination.totalUsers ??
+    payload?.total ??
+    0;
+  const page =
+    pagination.page ??
+    pagination.currentPage ??
+    payload?.page ??
+    fallbackPage;
+  const pages =
+    pagination.pages ??
+    pagination.totalPages ??
+    payload?.pages ??
+    Math.max(1, Math.ceil(total / USERS_PAGE_LIMIT));
+
+  return {
+    total,
+    page,
+    pages: Math.max(1, pages || 1),
+  };
+};
+
+const getVisiblePages = (currentPage: number, totalPages: number) => {
+  const maxVisible = 5;
+  const safeTotalPages = Math.max(1, totalPages);
+  const halfWindow = Math.floor(maxVisible / 2);
+  const start = Math.max(
+    1,
+    Math.min(currentPage - halfWindow, safeTotalPages - maxVisible + 1),
+  );
+  const end = Math.min(safeTotalPages, start + maxVisible - 1);
+
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+};
+
+const normalizeUser = (user: RawUser, index: number): UserRow => {
+  const email = user.email || "";
+  const name =
+    user.name ||
+    (email.includes("@") ? email.split("@")[0] : email) ||
+    "Unknown User";
+  const role = user.role || "CUSTOMER";
+  const rawStatus = String(user.status || "").toLowerCase();
+  const isSuspended = rawStatus === "suspended" || user.isBlocked === true;
+
+  return {
+    ...user,
+    id: user.id || user._id || index,
+    name,
+    email,
+    avatar:
+      user.avatar ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=F3F4F6&color=4B5563`,
+    role,
+    location: user.location || "N/A",
+    security: user.security || "2FA Pending",
+    lastLogin: user.lastLogin || { date: "Never logged in", time: "--", ip: "" },
+    status: isSuspended ? "Suspended" : "Active",
+  };
+};
 
 export default function UserManagementPage() {
   const [isOpen, setIsOpen] = useState(false);
   const [accessEnabled, setAccessEnabled] = useState(false);
   const [accountStatus, setAccountStatus] = useState(true);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [usersData, setUsersData] = useState<any[]>(usersDataFallback);
-  const [statsData, setStatsData] = useState<any>(null);
+  const [usersData, setUsersData] = useState<UserRow[]>([]);
+  const [statsData, setStatsData] = useState<UserStats | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
 
   useEffect(() => {
     document.body.style.overflow = isOpen ? "hidden" : "auto";
   }, [isOpen]);
 
-  const normalizeUser = (user: any, index: number) => {
-    const email = user.email || "";
-    const name =
-      user.name ||
-      (email.includes("@") ? email.split("@")[0] : email) ||
-      "Unknown User";
-    const role = user.role || "CUSTOMER";
-    const isSuspended =
-      user.status === "suspended" ||
-      user.status === "Suspended" ||
-      user.isBlocked === true;
-
-    return {
-      ...user,
-      id: user.id || user._id || index,
-      name,
-      email,
-      avatar:
-        user.avatar ||
-        `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=F3F4F6&color=4B5563`,
-      role,
-      location: user.location || "Global",
-      security: user.security || "2FA Pending",
-      lastLogin: user.lastLogin || { date: "Never logged in", time: "--", ip: "" },
-      status: isSuspended ? "Suspended" : "Active",
-    };
-  };
-
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (currentPage = 1) => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await usersApi.getUsers({ search });
+      const response = await usersApi.getUsers({
+        page: currentPage,
+        limit: USERS_PAGE_LIMIT,
+        search: search.trim() || undefined,
+        role: roleFilter === "all" ? undefined : roleFilter,
+        status: statusFilter === "all" ? undefined : statusFilter,
+      });
       if (response?.data) {
-        setStatsData(response.data.stats);
-        setUsersData(
-          response.data.users?.length
-            ? response.data.users.map(normalizeUser)
-            : usersDataFallback,
-        );
+        const payload = response.data as UsersPaginationPayload;
+        const users = payload.users ?? payload.data ?? [];
+        const pagination = normalizePagination(payload, currentPage);
+        setStatsData(payload.stats ?? null);
+        setUsersData(users.map(normalizeUser));
+        setTotal(pagination.total);
+        setPage(pagination.page);
+        setPages(pagination.pages);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load users data");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load users data");
+      setUsersData((current) => current.length ? current : usersDataFallback);
+      setTotal((current) => current || usersDataFallback.length);
+      setPages((current) => current || 1);
     } finally {
       setIsLoading(false);
     }
-  }, [search]);
+  }, [search, roleFilter, statusFilter]);
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsers(1);
   }, [fetchUsers]);
 
   const handleCreateUser = async (formData: CreateUserFormData) => {
@@ -223,10 +336,11 @@ export default function UserManagementPage() {
       role: formData.role,
       status: formData.status,
     });
-    await fetchUsers();
+    await fetchUsers(page);
   };
 
   const router = useRouter();
+  const visiblePages = getVisiblePages(page, pages);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
@@ -438,16 +552,21 @@ export default function UserManagementPage() {
 
               {/* Role Filter */}
               <SelectField
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
                 options={[
                   { label: "All Roles", value: "all" },
-                  { label: "Super Admin", value: "super_admin" },
-                  { label: "Manager", value: "manager" },
-                  { label: "Staff", value: "staff" },
+                  { label: "Admin", value: "ADMIN" },
+                  { label: "Customer", value: "CUSTOMER" },
+                  { label: "Driver", value: "DRIVER" },
+                  { label: "Owner", value: "OWNER" },
                 ]}
               />
 
               {/* Status Filter */}
               <SelectField
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
                 options={[
                   { label: "All Status", value: "all" },
                   { label: "Active", value: "active" },
@@ -475,6 +594,35 @@ export default function UserManagementPage() {
           </div>
         </div>
 
+        {error && (
+          <div
+            style={{
+              margin: "1rem 1.5rem 0",
+              padding: "0.85rem 1rem",
+              borderRadius: "8px",
+              border: "1px solid #FECACA",
+              background: "#FEF2F2",
+              color: "#DC2626",
+              fontSize: "0.85rem",
+            }}
+          >
+            {error}{" "}
+            <button
+              onClick={() => fetchUsers(page)}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#DC2626",
+                cursor: "pointer",
+                fontWeight: 700,
+                textDecoration: "underline",
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Table Body */}
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -485,22 +633,43 @@ export default function UserManagementPage() {
                 </th>
                 <th style={tableHeaderStyle}>User</th>
                 <th style={tableHeaderStyle}>Role & Location</th>
-                <th style={tableHeaderStyle}>Security</th>
+                {/* <th style={tableHeaderStyle}>Security</th> */}
                 <th style={tableHeaderStyle}>Last Login</th>
                 <th style={tableHeaderStyle}>Status</th>
                 <th style={tableHeaderStyle}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {usersData
-                .filter(
-                  (user) =>
-                    user.name.toLowerCase().includes(search.toLowerCase()) ||
-                    user.email.toLowerCase().includes(search.toLowerCase()) ||
-                    user.role.toLowerCase().includes(search.toLowerCase()) ||
-                    user.location.toLowerCase().includes(search.toLowerCase()),
-                )
-                .map((user, index) => (
+              {isLoading ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      padding: "2rem",
+                      textAlign: "center",
+                      color: COLORS.TEXT_MUTED,
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    Loading users...
+                  </td>
+                </tr>
+              ) : usersData.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      padding: "2rem",
+                      textAlign: "center",
+                      color: COLORS.TEXT_MUTED,
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    No users found. Try adjusting your filters.
+                  </td>
+                </tr>
+              ) : (
+                usersData.map((user, index) => (
                   <tr
                     key={user.id || user._id || index}
                     style={{ borderBottom: `1px solid ${COLORS.BORDER_MAIN}` }}
@@ -594,9 +763,9 @@ export default function UserManagementPage() {
                         </div>
                       </div>
                     </td>
-                    <td style={tableCellStyle}>
+                    {/* <td style={tableCellStyle}>
                       <SecurityBadge status={user.security} />
-                    </td>
+                    </td> */}
                     <td style={tableCellStyle}>
                       <div style={{ display: "flex", flexDirection: "column" }}>
                         <span
@@ -635,9 +804,68 @@ export default function UserManagementPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                ))
+              )}
             </tbody>
           </table>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "1.25rem 1.5rem",
+            borderTop: `1px solid ${COLORS.BORDER_MAIN}`,
+          }}
+        >
+          <p style={{ fontSize: "0.85rem", color: COLORS.TEXT_SECONDARY }}>
+            Showing {total ? Math.min((page - 1) * USERS_PAGE_LIMIT + 1, total) : 0}
+            -{Math.min(page * USERS_PAGE_LIMIT, total)} of {total.toLocaleString()} entries
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <button
+              disabled={page <= 1 || isLoading}
+              onClick={() => fetchUsers(page - 1)}
+              style={{
+                ...paginationButtonStyle,
+                cursor: page <= 1 || isLoading ? "not-allowed" : "pointer",
+                opacity: page <= 1 || isLoading ? 0.5 : 1,
+              }}
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            {visiblePages.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                onClick={() => fetchUsers(pageNumber)}
+                disabled={isLoading}
+                style={{
+                  ...paginationButtonStyle,
+                  background:
+                    pageNumber === page ? COLORS.PRIMARY_MAIN : COLORS.BG_CARD,
+                  color: pageNumber === page ? COLORS.BG_CARD : COLORS.TEXT_SECONDARY,
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                  opacity: isLoading ? 0.7 : 1,
+                }}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              disabled={page >= pages || isLoading}
+              onClick={() => fetchUsers(page + 1)}
+              style={{
+                ...paginationButtonStyle,
+                cursor: page >= pages || isLoading ? "not-allowed" : "pointer",
+                opacity: page >= pages || isLoading ? 0.5 : 1,
+              }}
+              aria-label="Next page"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -652,7 +880,7 @@ function StatCard({
   iconBg,
   iconColor,
   trendColor,
-}: any) {
+}: StatCardProps) {
   return (
     <div className="card" style={{ padding: "1.25rem" }}>
       <div
@@ -726,42 +954,42 @@ function RoleDistItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SecurityBadge({ status }: { status: string }) {
-  let bg = "#F3F4F6";
-  let color = "#4B5563";
-  let icon = null;
+// function SecurityBadge({ status }: { status: string }) {
+//   let bg = "#F3F4F6";
+//   let color = "#4B5563";
+//   let icon = null;
 
-  if (status === "2FA Enabled") {
-    bg = "#F0FDF4";
-    color = "#16A34A";
-  } else if (status === "2FA Pending") {
-    bg = "#FFF7ED";
-    color = "#D97706";
-  } else if (status === "Disabled") {
-    bg = "#F3F4F6";
-    color = "#9CA3AF";
-    icon = <ShieldCheck size={12} style={{ opacity: 0.5 }} />;
-  }
+//   if (status === "2FA Enabled") {
+//     bg = "#F0FDF4";
+//     color = "#16A34A";
+//   } else if (status === "2FA Pending") {
+//     bg = "#FFF7ED";
+//     color = "#D97706";
+//   } else if (status === "Disabled") {
+//     bg = "#F3F4F6";
+//     color = "#9CA3AF";
+//     icon = <ShieldCheck size={12} style={{ opacity: 0.5 }} />;
+//   }
 
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.4rem",
-        padding: "0.25rem 0.75rem",
-        borderRadius: "9999px",
-        backgroundColor: bg,
-        color: color,
-        fontSize: "0.7rem",
-        fontWeight: 600,
-      }}
-    >
-      {icon}
-      {status}
-    </div>
-  );
-}
+//   return (
+//     <div
+//       style={{
+//         display: "inline-flex",
+//         alignItems: "center",
+//         gap: "0.4rem",
+//         padding: "0.25rem 0.75rem",
+//         borderRadius: "9999px",
+//         backgroundColor: bg,
+//         color: color,
+//         fontSize: "0.7rem",
+//         fontWeight: 600,
+//       }}
+//     >
+//       {icon}
+//       {status}
+//     </div>
+//   );
+// }
 
 function StatusBadge({ status }: { status: string }) {
   let dotColor = COLORS.SUCCESS_MAIN;
@@ -811,4 +1039,19 @@ const tableHeaderStyle: React.CSSProperties = {
 const tableCellStyle: React.CSSProperties = {
   padding: "1rem 1.5rem",
   verticalAlign: "middle",
+};
+
+const paginationButtonStyle: React.CSSProperties = {
+  minWidth: "32px",
+  height: "32px",
+  padding: "0 10px",
+  borderRadius: "6px",
+  border: `1px solid ${COLORS.BORDER_MAIN}`,
+  background: COLORS.BG_CARD,
+  color: COLORS.TEXT_SECONDARY,
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 };
