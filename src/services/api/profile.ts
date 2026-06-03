@@ -12,6 +12,7 @@ export interface ProfileData {
   jobTitle?: string;
   department?: string;
   avatar?: string;
+  profileImage?: string;
   status?: string;
   twoFactorEnabled?: boolean;
   lastLogin?: string;
@@ -40,7 +41,7 @@ export const profileApi = {
    * PUT /admin/profile
    * Update profile information
    */
-  updateProfile: async (data: Partial<ProfileData>) =>
+  updateProfile: async (data: FormData | Partial<ProfileData>) =>
     apiFetch<ApiResponse<ProfileData>>("/admin/profile", {
       method: "PUT",
       body: data,

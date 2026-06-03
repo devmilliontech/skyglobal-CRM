@@ -1,3 +1,4 @@
+"use client";
 import { COLORS } from "@/constants/Constant";
 import React, { useState, useEffect } from "react";
 import {
@@ -9,6 +10,7 @@ import {
   Filter,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { profileApi } from "@/services/api/profile";
 
 interface PageHeaderProps {
   title?: string | React.ReactNode;
@@ -71,14 +73,48 @@ export default function PageHeader({
   hasNotification = false,
   notificationCount,
 
-  userName = "Admin",
-  userAvatar = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150",
+  userName: initialUserName,
+  userAvatar: initialUserAvatar,
   onProfileClick,
 
   variant = "light",
 }: PageHeaderProps) {
   const router = useRouter();
   const [internalSearch, setInternalSearch] = useState(searchValue);
+
+  // Dynamic user data states derived from API call
+  const [liveUserName, setLiveUserName] = useState(initialUserName || "Admin");
+  const [liveUserAvatar, setLiveUserAvatar] = useState(
+    initialUserAvatar ||
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150",
+  );
+
+  // Fetch real-time profile image and data exactly like the profile screen
+  useEffect(() => {
+    const fetchHeaderProfile = async () => {
+      try {
+        const response = await profileApi.getProfile();
+        if (response?.data) {
+          const data = response.data;
+
+          // Construct Full Name if present
+          if (data.firstName) {
+            setLiveUserName(`${data.firstName} ${data.lastName || ""}`.trim());
+          }
+
+          // Set dynamic avatar url fallback sequence
+          const avatarUrl = data.profileImage || data.avatar;
+          if (avatarUrl) {
+            setLiveUserAvatar(avatarUrl);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to sync profile status to header:", error);
+      }
+    };
+
+    fetchHeaderProfile();
+  }, []);
 
   useEffect(() => {
     setInternalSearch(searchValue);
@@ -133,7 +169,7 @@ export default function PageHeader({
 
       {/* RIGHT */}
       <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-        {/* SEARCH BAR NOW ON RIGHT */}
+        {/* SEARCH BAR */}
         {enableSearch && (
           <div
             style={{
@@ -172,13 +208,15 @@ export default function PageHeader({
           <div style={{ position: "relative", cursor: "pointer" }}>
             <Bell
               size={20}
-              onClick={onNotificationClick || (() => router.push("/notifications"))}
+              onClick={
+                onNotificationClick || (() => router.push("/notifications"))
+              }
               style={{ color: isDark ? "white" : "#6B7280" }}
             />
           </div>
         )}
 
-        {/* USER */}
+        {/* USER PROFILE WRAPPER */}
         <div
           onClick={onProfileClick || (() => router.push("/settings/profile"))}
           style={{
@@ -187,16 +225,16 @@ export default function PageHeader({
             gap: "0.6rem",
             cursor: "pointer",
           }}
+          title={liveUserName}
         >
-          <img src={userAvatar} style={avatar} />
+          <img src={liveUserAvatar} style={avatar} alt={liveUserName} />
         </div>
       </div>
     </div>
   );
 }
 
-/* Styles */
-
+/* Styles unchanged */
 const container = {
   display: "flex",
   justifyContent: "space-between",
@@ -238,19 +276,6 @@ const searchInput = {
   fontSize: "0.85rem",
 };
 
-const createBtn = {
-  background: COLORS.PRIMARY_MAIN,
-  color: "white",
-  border: "none",
-  padding: "0.55rem 1rem",
-  borderRadius: "8px",
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  cursor: "pointer",
-  fontWeight: 600,
-};
-
 const iconBtn = {
   border: "1px solid #E5E7EB",
   background: "transparent",
@@ -259,29 +284,9 @@ const iconBtn = {
   cursor: "pointer",
 };
 
-const dot = {
-  position: "absolute",
-  top: "-6px",
-  right: "-6px",
-  minWidth: "16px",
-  height: "16px",
-  borderRadius: "50%",
-  background: COLORS.ERROR_MAIN,
-  color: "white",
-  fontSize: "10px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
 const avatar = {
   width: "36px",
   height: "36px",
   borderRadius: "50%",
   objectFit: "cover" as const,
-};
-
-const userNameStyle = {
-  fontSize: "0.85rem",
-  fontWeight: 600,
 };

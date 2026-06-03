@@ -20,6 +20,8 @@ import {
   BarChart2,
 } from "lucide-react";
 import styles from "./Sidebar.module.css";
+import { useEffect, useState } from "react";
+import { profileApi } from "@/services/api/profile";
 
 const menuItems = [
   { name: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -42,6 +44,37 @@ const bottomItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+
+  const [liveUserName, setLiveUserName] = useState<string>("Admin");
+  const [liveUserAvatar, setLiveUserAvatar] = useState<string>(
+    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150",
+  );
+
+  useEffect(() => {
+    const fetchHeaderProfile = async () => {
+      try {
+        const response = await profileApi.getProfile();
+        if (response?.data) {
+          const data = response.data;
+
+          // Construct Full Name if present
+          if (data.firstName) {
+            setLiveUserName(`${data.firstName} ${data.lastName || ""}`.trim());
+          }
+
+          // Set dynamic avatar url fallback sequence
+          const avatarUrl = data.profileImage || data.avatar;
+          if (avatarUrl) {
+            setLiveUserAvatar(avatarUrl);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to sync profile status to header:", error);
+      }
+    };
+
+    fetchHeaderProfile();
+  }, []);
 
   return (
     <aside className="sidebar-container">
@@ -98,13 +131,10 @@ export default function Sidebar() {
             onClick={() => router.push("/settings/profile")}
           >
             <div className={styles.avatar}>
-              <img
-                src="https://ui-avatars.com/api/?name=Alex+Morrison&background=3B82F6&color=fff"
-                alt="User"
-              />
+              <img src={liveUserAvatar} alt="User" />
             </div>
             <div className={styles.userInfo}>
-              <p className={styles.userName}>Alex Morrison</p>
+              <p className={styles.userName}>{liveUserName}</p>
               <p className={styles.userRole}>Super Admin</p>
             </div>
             <button className={styles.logoutBtn}>

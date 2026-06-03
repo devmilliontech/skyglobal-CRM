@@ -53,6 +53,18 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [profileData, setProfileData] = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>(SESSIONS);
+  const [errors, setErrors] = useState<any>({});
+
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    phone: "",
+    jobTitle: "",
+    department: "",
+  });
+  const [profileImage, setProfileImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -64,12 +76,25 @@ export default function ProfilePage() {
         ]);
 
         if (profileRes.status === "fulfilled" && profileRes.value?.data) {
-          setProfileData(profileRes.value.data);
-          setEnable2FA(profileRes.value.data.twoFactorEnabled || false);
+          const data = profileRes.value.data;
+          setProfileData(data);
+          setEnable2FA(data.twoFactorEnabled || false);
+          setFormData({
+            firstName: data.firstName || "",
+            lastName: data.lastName || "",
+            phone: data.phone || "",
+            jobTitle: data.jobTitle || "",
+            department: data.department || "",
+          });
+          if (data.profileImage || data.avatar) {
+            setImagePreview((data.profileImage || data.avatar) as string);
+          }
         }
 
         if (sessionsRes.status === "fulfilled" && sessionsRes.value?.data) {
-          const apiSessions = (Array.isArray(sessionsRes.value.data) ? sessionsRes.value.data : []).map((s: any, i: number) => ({
+          const apiSessions = (
+            Array.isArray(sessionsRes.value.data) ? sessionsRes.value.data : []
+          ).map((s: any, i: number) => ({
             id: s._id || i + 1,
             device: s.device || "Unknown Device",
             browser: s.browser || "Unknown Browser",
@@ -78,7 +103,11 @@ export default function ProfilePage() {
             status: s.status || "Active",
             statusColor: s.status === "Current Session" ? "#10B981" : "#6B7280",
             action: "Logout",
-            icon: (s.device || "").toLowerCase().includes("phone") || (s.device || "").toLowerCase().includes("iphone") ? Smartphone : Monitor,
+            icon:
+              (s.device || "").toLowerCase().includes("phone") ||
+              (s.device || "").toLowerCase().includes("iphone")
+                ? Smartphone
+                : Monitor,
           }));
           if (apiSessions.length) setSessions(apiSessions);
         }
@@ -90,6 +119,67 @@ export default function ProfilePage() {
     };
     fetchProfile();
   }, []);
+
+  const validateForm = () => {
+    const newErrors: any = {};
+
+    // Required fields
+    if (!formData.firstName.trim()) {
+      newErrors.firstName = "First name is required";
+    }
+
+    if (!formData.lastName.trim()) {
+      newErrors.lastName = "Last name is required";
+    }
+
+    if (!profileData?.email?.trim()) {
+      newErrors.email = "Email is required";
+    }
+
+    if (!formData.phone.trim()) {
+      newErrors.phone = "Phone number is required";
+    } else if (!/^\d{10}$/.test(formData.phone)) {
+      newErrors.phone = "Phone number must be exactly 10 digits";
+    }
+
+    if (!formData.jobTitle.trim()) {
+      newErrors.jobTitle = "Job title is required";
+    }
+
+    if (!formData.department.trim()) {
+      newErrors.department = "Department is required";
+    }
+
+    setErrors(newErrors);
+
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      setIsSaving(true);
+      const fd = new FormData();
+      if (formData.firstName) fd.append("firstName", formData.firstName);
+      if (formData.lastName) fd.append("lastName", formData.lastName);
+      if (formData.phone) fd.append("phone", formData.phone);
+      if (formData.jobTitle) fd.append("jobTitle", formData.jobTitle);
+      if (formData.department) fd.append("department", formData.department);
+      if (profileImage) {
+        fd.append("profileImage", profileImage);
+      }
+
+      const res = await profileApi.updateProfile(fd);
+      if (res.success) {
+        setProfileData(res.data);
+        alert("Profile updated successfully");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "Failed to update profile");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const calculateStrength = (pass: string) => {
     if (!pass) return { score: 0, label: "None", color: "#D1D5DB" };
@@ -177,12 +267,34 @@ export default function ProfilePage() {
                   overflow: "hidden",
                   border: "4px solid #fff",
                   boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+                  position: "relative",
+                  cursor: "pointer",
                 }}
+                onClick={() =>
+                  document.getElementById("profileImageInput")?.click()
+                }
+                title="Click to update profile image"
               >
                 <img
-                  src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-                  alt="Emily Johnson"
+                  src={
+                    imagePreview ||
+                    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
+                  }
+                  alt="Profile"
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+                <input
+                  type="file"
+                  id="profileImageInput"
+                  style={{ display: "none" }}
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setProfileImage(file);
+                      setImagePreview(URL.createObjectURL(file));
+                    }
+                  }}
                 />
               </div>
               <div
@@ -212,7 +324,9 @@ export default function ProfilePage() {
                   marginBottom: "0.25rem",
                 }}
               >
-                {profileData?.firstName ? `${profileData.firstName} ${profileData.lastName || ""}` : "Emily Johnson"}
+                {profileData?.firstName
+                  ? `${profileData.firstName} ${profileData.lastName || ""}`
+                  : "Emily Johnson"}
               </h3>
               <p
                 style={{
@@ -268,7 +382,7 @@ export default function ProfilePage() {
                         color: COLORS.TEXT_MAIN,
                       }}
                     >
-                      +1 (213) 555-1234
+                      {profileData?.phone}
                     </p>
                   </div>
                 </div>
@@ -473,13 +587,25 @@ export default function ProfilePage() {
                   marginBottom: "2rem",
                 }}
               >
-                <InputField label="First Name *" value="Emily" />
-                <InputField label="Last Name *" value="Johnson" />
+                <InputField
+                  label="First Name *"
+                  value={formData.firstName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, firstName: e.target.value })
+                  }
+                />
+                <InputField
+                  label="Last Name *"
+                  value={formData.lastName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, lastName: e.target.value })
+                  }
+                />
 
                 <div style={{ position: "relative" }}>
                   <InputField
                     label="Email Address *"
-                    value="johnson@example.com"
+                    value={profileData?.email || "admin@example.com"}
                     readOnly
                   />
                   <span
@@ -511,14 +637,26 @@ export default function ProfilePage() {
                 <InputField
                   label="Phone Number"
                   placeholder="(213) 555-1234"
-                  defaultValue="(213) 555-1234"
+                  value={formData.phone}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
                 />
 
                 <InputField
                   label="Job Title"
-                  defaultValue="Head of Operations"
+                  value={formData.jobTitle}
+                  onChange={(e) =>
+                    setFormData({ ...formData, jobTitle: e.target.value })
+                  }
                 />
-                <InputField label="Department" defaultValue="Operations" />
+                <InputField
+                  label="Department"
+                  value={formData.department}
+                  onChange={(e) =>
+                    setFormData({ ...formData, department: e.target.value })
+                  }
+                />
               </div>
 
               <div
@@ -542,13 +680,15 @@ export default function ProfilePage() {
                 </Button>
                 <Button
                   variant="primary"
+                  onClick={handleSaveProfile}
+                  disabled={isSaving}
                   style={{
                     padding: "0.6rem 1.5rem",
                     fontSize: "0.85rem",
                     fontWeight: 600,
                   }}
                 >
-                  Save Changes
+                  {isSaving ? "Saving..." : "Save Changes"}
                 </Button>
               </div>
             </Card>
