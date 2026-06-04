@@ -47,7 +47,7 @@ export default function Sidebar() {
 
   const [liveUserName, setLiveUserName] = useState<string>("Admin");
   const [liveUserAvatar, setLiveUserAvatar] = useState<string>(
-    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150",
+    "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTuoiVnnWu_QbtFist_W7Hbz2V4drhwXDVyiw&s",
   );
 
   useEffect(() => {

@@ -9,6 +9,7 @@ import {
   Monitor,
   Mail,
   ChevronRight,
+  Pencil,
 } from "lucide-react";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
@@ -105,7 +106,7 @@ export default function ProfilePage() {
             action: "Logout",
             icon:
               (s.device || "").toLowerCase().includes("phone") ||
-                (s.device || "").toLowerCase().includes("iphone")
+              (s.device || "").toLowerCase().includes("iphone")
                 ? Smartphone
                 : Monitor,
           }));
@@ -121,9 +122,8 @@ export default function ProfilePage() {
   }, []);
 
   const validateForm = () => {
-    const newErrors: any = {};
+    const newErrors: Record<string, string> = {};
 
-    // Required fields
     if (!formData.firstName.trim()) {
       newErrors.firstName = "First name is required";
     }
@@ -132,13 +132,9 @@ export default function ProfilePage() {
       newErrors.lastName = "Last name is required";
     }
 
-    if (!profileData?.email?.trim()) {
-      newErrors.email = "Email is required";
-    }
-
     if (!formData.phone.trim()) {
       newErrors.phone = "Phone number is required";
-    } else if (!/^\d{10}$/.test(formData.phone)) {
+    } else if (!/^\d{10}$/.test(formData.phone.trim())) {
       newErrors.phone = "Phone number must be exactly 10 digits";
     }
 
@@ -156,19 +152,29 @@ export default function ProfilePage() {
   };
 
   const handleSaveProfile = async () => {
+    // Run validation first
+    const isValid = validateForm();
+
+    if (!isValid) {
+      return; // stop save if validation fails
+    }
+
     try {
       setIsSaving(true);
+
       const fd = new FormData();
-      if (formData.firstName) fd.append("firstName", formData.firstName);
-      if (formData.lastName) fd.append("lastName", formData.lastName);
-      if (formData.phone) fd.append("phone", formData.phone);
-      if (formData.jobTitle) fd.append("jobTitle", formData.jobTitle);
-      if (formData.department) fd.append("department", formData.department);
+      fd.append("firstName", formData.firstName.trim());
+      fd.append("lastName", formData.lastName.trim());
+      fd.append("phone", formData.phone.trim());
+      fd.append("jobTitle", formData.jobTitle.trim());
+      fd.append("department", formData.department.trim());
+
       if (profileImage) {
         fd.append("profileImage", profileImage);
       }
 
       const res = await profileApi.updateProfile(fd);
+
       if (res.success) {
         setProfileData(res.data);
         alert("Profile updated successfully");
@@ -278,7 +284,7 @@ export default function ProfilePage() {
                 <img
                   src={
                     imagePreview ||
-                    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
+                    "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTuoiVnnWu_QbtFist_W7Hbz2V4drhwXDVyiw&s"
                   }
                   alt="Profile"
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -313,7 +319,7 @@ export default function ProfilePage() {
                   color: "#fff",
                 }}
               >
-                <CheckCircle size={14} />
+                <Pencil size={14} />
               </div>
 
               <h3
@@ -326,7 +332,7 @@ export default function ProfilePage() {
               >
                 {profileData?.firstName
                   ? `${profileData.firstName} ${profileData.lastName || ""}`
-                  : "Emily Johnson"}
+                  : "..."}
               </h3>
               <p
                 style={{
@@ -335,7 +341,7 @@ export default function ProfilePage() {
                   marginBottom: "1rem",
                 }}
               >
-                {profileData?.email || "johnson@example.com"}
+                {profileData?.email || "..."}
               </p>
 
               <div
@@ -587,20 +593,52 @@ export default function ProfilePage() {
                   marginBottom: "2rem",
                 }}
               >
-                <InputField
-                  label="First Name *"
-                  value={formData.firstName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, firstName: e.target.value })
-                  }
-                />
-                <InputField
-                  label="Last Name *"
-                  value={formData.lastName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, lastName: e.target.value })
-                  }
-                />
+                <div>
+                  <InputField
+                    label="First Name *"
+                    value={formData.firstName}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        firstName: e.target.value,
+                      })
+                    }
+                  />
+                  {errors.firstName && (
+                    <p
+                      style={{
+                        color: "red",
+                        fontSize: "12px",
+                        marginTop: "4px",
+                      }}
+                    >
+                      {errors.firstName}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <InputField
+                    label="Last Name *"
+                    value={formData.lastName}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        lastName: e.target.value,
+                      })
+                    }
+                  />
+                  {errors.lastName && (
+                    <p
+                      style={{
+                        color: "red",
+                        fontSize: "12px",
+                        marginTop: "4px",
+                      }}
+                    >
+                      {errors.lastName}
+                    </p>
+                  )}
+                </div>
 
                 <div style={{ position: "relative" }}>
                   <InputField
@@ -608,21 +646,6 @@ export default function ProfilePage() {
                     value={profileData?.email || "dev@millionhits.net.au"}
                     readOnly
                   />
-                  <span
-                    style={{
-                      position: "absolute",
-                      right: "12px",
-                      top: "5px",
-                      backgroundColor: "#EFF6FF",
-                      color: "#3B82F6",
-                      fontSize: "0.7rem",
-                      padding: "0.5rem 0.9rem",
-                      borderRadius: "12px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Verified
-                  </span>
                   <p
                     style={{
                       fontSize: "0.75rem",
@@ -634,29 +657,77 @@ export default function ProfilePage() {
                   </p>
                 </div>
 
-                <InputField
-                  label="Phone Number"
-                  placeholder="(213) 555-1234"
-                  value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
-                />
+                <div>
+                  <InputField
+                    label="Phone Number *"
+                    placeholder="(213) 555-1234"
+                    value={formData.phone}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        phone: e.target.value,
+                      })
+                    }
+                  />
+                  {errors.phone && (
+                    <p
+                      style={{
+                        color: "red",
+                        fontSize: "12px",
+                        marginTop: "4px",
+                      }}
+                    >
+                      {errors.phone}
+                    </p>
+                  )}
+                </div>
 
-                <InputField
-                  label="Job Title"
-                  value={formData.jobTitle}
-                  onChange={(e) =>
-                    setFormData({ ...formData, jobTitle: e.target.value })
-                  }
-                />
-                <InputField
-                  label="Department"
-                  value={formData.department}
-                  onChange={(e) =>
-                    setFormData({ ...formData, department: e.target.value })
-                  }
-                />
+                <div>
+                  <InputField
+                    label="Job Title *"
+                    value={formData.jobTitle}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        jobTitle: e.target.value,
+                      })
+                    }
+                  />
+                  {errors.jobTitle && (
+                    <p
+                      style={{
+                        color: "red",
+                        fontSize: "12px",
+                        marginTop: "4px",
+                      }}
+                    >
+                      {errors.jobTitle}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <InputField
+                    label="Department *"
+                    value={formData.department}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        department: e.target.value,
+                      })
+                    }
+                  />
+                  {errors.department && (
+                    <p
+                      style={{
+                        color: "red",
+                        fontSize: "12px",
+                        marginTop: "4px",
+                      }}
+                    >
+                      {errors.department}
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div
