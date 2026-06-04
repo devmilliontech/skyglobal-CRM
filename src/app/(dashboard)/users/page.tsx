@@ -318,7 +318,7 @@ export default function UserManagementPage() {
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load users data");
-      setUsersData((current) => current.length ? current : usersDataFallback);
+      setUsersData((current) => current.length ? current : (usersDataFallback as unknown as UserRow[]));
       setTotal((current) => current || usersDataFallback.length);
       setPages((current) => current || 1);
     } finally {
