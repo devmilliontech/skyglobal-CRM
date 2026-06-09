@@ -12,6 +12,15 @@ export interface User {
   lastActive?: string;
   createdAt?: string;
   avatar?: string;
+  profileImage?: string;
+  driverProfile?: {
+    avatar?: string | null;
+    profileImage?: string | null;
+  } | null;
+  ownerProfile?: {
+    avatar?: string | null;
+    profileImage?: string | null;
+  } | null;
 }
 
 export interface UserStats {
@@ -41,6 +50,25 @@ export interface UsersFilters {
   status?: string;
 }
 
+const getUserAvatar = (user: Record<string, any>) =>
+  user.avatar ||
+  user.profileImage ||
+  user.driverProfile?.avatar ||
+  user.driverProfile?.profileImage ||
+  user.ownerProfile?.avatar ||
+  user.ownerProfile?.profileImage ||
+  "";
+
+const mapUser = (user: Record<string, any>) => {
+  const avatar = getUserAvatar(user);
+
+  return {
+    ...user,
+    avatar,
+    profileImage: user.profileImage || avatar,
+  };
+};
+
 export const usersApi = {
   /**
    * GET /admin/users
@@ -63,12 +91,20 @@ export const usersApi = {
       suspendedUsers: stats.suspendedUsers ?? 0,
       roleDistribution: mapRoleDistribution(stats.roleDistribution),
     };
+    const users = Array.isArray(res.data?.users)
+      ? res.data.users.map(mapUser)
+      : [];
+    const dataRows = Array.isArray(res.data?.data)
+      ? res.data.data.map(mapUser)
+      : undefined;
 
     return {
       ...res,
       data: {
         ...res.data,
         stats: mappedStats,
+        users,
+        ...(dataRows ? { data: dataRows } : {}),
       },
     } as ApiResponse<{ stats: UserStats; users: User[]; pagination: any }>;
   },
@@ -95,8 +131,13 @@ export const usersApi = {
    * GET /admin/users/:userId
    * Fetch a single user by ID
    */
-  getUserById: async (userId: string) =>
-    apiFetch<ApiResponse<User>>(`/admin/users/${userId}`),
+  getUserById: async (userId: string) => {
+    const res = await apiFetch<ApiResponse<any>>(`/admin/users/${userId}`);
+    return {
+      ...res,
+      data: mapUser(res.data || {}),
+    } as ApiResponse<User>;
+  },
 
   /**
    * POST /admin/users

@@ -636,7 +636,6 @@ export default function UserManagementPage() {
                 {/* <th style={tableHeaderStyle}>Security</th> */}
                 <th style={tableHeaderStyle}>Last Login</th>
                 <th style={tableHeaderStyle}>Status</th>
-                <th style={tableHeaderStyle}>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -790,18 +789,6 @@ export default function UserManagementPage() {
                     </td>
                     <td style={tableCellStyle}>
                       <StatusBadge status={user.status} />
-                    </td>
-                    <td style={tableCellStyle}>
-                      <button
-                        style={{
-                          border: "none",
-                          background: "none",
-                          cursor: "pointer",
-                          color: COLORS.TEXT_MUTED,
-                        }}
-                      >
-                        <MoreVertical size={18} />
-                      </button>
                     </td>
                   </tr>
                 ))

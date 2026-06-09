@@ -1,24 +1,19 @@
 "use client";
 
 import { COLORS } from "@/constants/Constant";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Users,
   CheckCircle2,
   Car,
   AlertTriangle,
-  Search,
-  RotateCcw,
   Download,
   Filter,
   MoreHorizontal,
   ChevronRight,
-  Plus,
+  ChevronLeft,
   Eye,
   Edit2,
-  Mail,
-  Phone,
-  Loader2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
@@ -29,35 +24,89 @@ import SelectField from "@/components/SelectField";
 import StatusBadge from "@/components/StatusBadge";
 import { ownersApi } from "@/services/api/owners";
 
+const OWNERS_PAGE_LIMIT = 10;
+
+const getVisiblePages = (currentPage: number, totalPages: number) => {
+  const safeTotalPages = Math.max(1, totalPages);
+  const maxVisible = 5;
+  const halfWindow = Math.floor(maxVisible / 2);
+  const start = Math.max(
+    1,
+    Math.min(currentPage - halfWindow, safeTotalPages - maxVisible + 1),
+  );
+  const end = Math.min(safeTotalPages, start + maxVisible - 1);
+
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+};
+
 export default function OwnersManagementPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All Status");
+  const [vehicleCountFilter, setVehicleCountFilter] = useState("Vehicle Count");
+  const [complianceFilter, setComplianceFilter] = useState("Compliance");
+  const [dateJoined, setDateJoined] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statsData, setStatsData] = useState<any>(null);
   const [ownersData, setOwnersData] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+
+  const fetchOwners = useCallback(async (currentPage = 1) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await ownersApi.getOwnersDashboard({
+        page: currentPage,
+        limit: OWNERS_PAGE_LIMIT,
+        search: search.trim() || undefined,
+        status: statusFilter,
+        vehicleCount: vehicleCountFilter,
+        compliance: complianceFilter,
+        dateJoined: dateJoined || undefined,
+      });
+
+      if (response?.data) {
+        const pagination = response.data.pagination || {};
+        setStatsData(response.data.stats);
+        setOwnersData(response.data.owners || []);
+        setTotal(pagination.total ?? 0);
+        setPage(pagination.page ?? currentPage);
+        setPages(Math.max(1, pagination.pages ?? 1));
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load owners data");
+      setStatsData(null);
+      setOwnersData([]);
+      setTotal(0);
+      setPages(1);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [search, statusFilter, vehicleCountFilter, complianceFilter, dateJoined]);
 
   useEffect(() => {
-    const fetchOwners = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await ownersApi.getOwnersDashboard({ search });
-        if (response?.data) {
-          setStatsData(response.data.stats);
-          setOwnersData(response.data.owners || []);
-        }
-      } catch (err: any) {
-        setError(err.message || "Failed to load owners data");
-        // Fallback to empty data
-        setStatsData(null);
-        setOwnersData([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchOwners();
-  }, [search]);
+    fetchOwners(1);
+  }, [fetchOwners]);
+
+  const handleApplyFilters = () => fetchOwners(1);
+
+  const handleResetFilters = () => {
+    setSearch("");
+    setStatusFilter("All Status");
+    setVehicleCountFilter("Vehicle Count");
+    setComplianceFilter("Compliance");
+    setDateJoined("");
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > pages || nextPage === page) return;
+    fetchOwners(nextPage);
+  };
+
+  const visiblePages = getVisiblePages(page, pages);
 
   const stats = [
     {
@@ -107,7 +156,7 @@ export default function OwnersManagementPage() {
         notificationCount={5}
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Search owners, vehicles, agreements..."
+        searchPlaceholder="Search owners by name or email..."
         createLabel="Add Owner"
       />
 
@@ -163,9 +212,10 @@ export default function OwnersManagementPage() {
               options={[
                 { label: "All Status", value: "All Status" },
                 { label: "Active", value: "Active" },
-                { label: "Inactive", value: "Inactive" },
                 { label: "Suspended", value: "Suspended" },
               ]}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
             />
           </div>
           <div style={{ width: "180px" }}>
@@ -176,6 +226,8 @@ export default function OwnersManagementPage() {
                 { label: "6-15", value: "6-15" },
                 { label: "16+", value: "16+" },
               ]}
+              value={vehicleCountFilter}
+              onChange={(e) => setVehicleCountFilter(e.target.value)}
             />
           </div>
           <div style={{ width: "180px" }}>
@@ -186,15 +238,29 @@ export default function OwnersManagementPage() {
                 { label: "Has Issues", value: "Has Issues" },
                 { label: "Expiring Soon", value: "Expiring Soon" },
               ]}
+              value={complianceFilter}
+              onChange={(e) => setComplianceFilter(e.target.value)}
             />
           </div>
           <div style={{ width: "180px" }}>
-            <input type="date" style={inputStyle} placeholder="mm/dd/yyyy" />
+            <input
+              type="date"
+              value={dateJoined}
+              onChange={(e) => setDateJoined(e.target.value)}
+              style={inputStyle}
+              placeholder="mm/dd/yyyy"
+            />
           </div>
-          <Button variant="primary" style={{ padding: "0.6rem 1.5rem" }}>
+          <Button
+            variant="primary"
+            onClick={handleApplyFilters}
+            disabled={isLoading}
+            style={{ padding: "0.6rem 1.5rem" }}
+          >
             Apply Filters
           </Button>
           <button
+            onClick={handleResetFilters}
             style={{
               fontSize: "0.85rem",
               color: COLORS.SECONDARY_MAIN,
@@ -206,6 +272,7 @@ export default function OwnersManagementPage() {
               borderStyle: "solid",
               borderRadius: "8px",
               padding: "0.6rem 1.5rem",
+              background: COLORS.BG_CARD,
             }}
           >
             Reset
@@ -238,6 +305,35 @@ export default function OwnersManagementPage() {
             </Button>
           </div>
         </div>
+
+        {error && (
+          <div
+            style={{
+              margin: "1rem 1.5rem 0",
+              padding: "0.85rem 1rem",
+              borderRadius: "8px",
+              border: "1px solid #FECACA",
+              background: "#FEF2F2",
+              color: "#DC2626",
+              fontSize: "0.85rem",
+            }}
+          >
+            {error}{" "}
+            <button
+              onClick={() => fetchOwners(page)}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#DC2626",
+                cursor: "pointer",
+                fontWeight: 700,
+                textDecoration: "underline",
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -276,7 +372,35 @@ export default function OwnersManagementPage() {
               </tr>
             </thead>
             <tbody>
-              {ownersData.map((owner, i) => (
+              {isLoading ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    style={{
+                      padding: "2rem",
+                      textAlign: "center",
+                      color: COLORS.TEXT_MUTED,
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    Loading owners...
+                  </td>
+                </tr>
+              ) : ownersData.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    style={{
+                      padding: "2rem",
+                      textAlign: "center",
+                      color: COLORS.TEXT_MUTED,
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    No owners found. Try adjusting your filters.
+                  </td>
+                </tr>
+              ) : ownersData.map((owner, i) => (
                 <tr
                   key={i}
                   style={{
@@ -405,7 +529,79 @@ export default function OwnersManagementPage() {
             </tbody>
           </table>
         </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "1.25rem 1.5rem",
+            borderTop: `1px solid ${COLORS.BORDER_MAIN}`,
+          }}
+        >
+          <p style={{ fontSize: "0.85rem", color: COLORS.TEXT_SECONDARY }}>
+            Showing {total ? Math.min((page - 1) * OWNERS_PAGE_LIMIT + 1, total) : 0}
+            -{Math.min(page * OWNERS_PAGE_LIMIT, total)} of {total.toLocaleString()} owners
+          </p>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <button
+              disabled={page <= 1 || isLoading}
+              onClick={() => handlePageChange(page - 1)}
+              style={{
+                ...paginationButtonStyle,
+                cursor: page <= 1 || isLoading ? "not-allowed" : "pointer",
+                opacity: page <= 1 || isLoading ? 0.5 : 1,
+              }}
+              aria-label="Previous page"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            {visiblePages.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                disabled={isLoading}
+                onClick={() => handlePageChange(pageNumber)}
+                style={{
+                  ...paginationButtonStyle,
+                  background: pageNumber === page ? COLORS.PRIMARY_MAIN : COLORS.BG_CARD,
+                  color: pageNumber === page ? COLORS.BG_CARD : COLORS.TEXT_SECONDARY,
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                  opacity: isLoading ? 0.7 : 1,
+                }}
+              >
+                {pageNumber}
+              </button>
+            ))}
+            <button
+              disabled={page >= pages || isLoading}
+              onClick={() => handlePageChange(page + 1)}
+              style={{
+                ...paginationButtonStyle,
+                cursor: page >= pages || isLoading ? "not-allowed" : "pointer",
+                opacity: page >= pages || isLoading ? 0.5 : 1,
+              }}
+              aria-label="Next page"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
       </Card>
     </div>
   );
 }
+
+const paginationButtonStyle: React.CSSProperties = {
+  minWidth: "32px",
+  height: "32px",
+  padding: "0 10px",
+  borderRadius: "6px",
+  border: `1px solid ${COLORS.BORDER_MAIN}`,
+  background: COLORS.BG_CARD,
+  color: COLORS.TEXT_SECONDARY,
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
