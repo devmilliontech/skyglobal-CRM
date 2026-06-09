@@ -1,13 +1,11 @@
 "use client";
 import { COLORS } from "@/constants/Constant";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ChevronRight,
-  ChevronDown,
-  Mail,
   ShieldCheck,
   Save,
   X,
@@ -15,51 +13,376 @@ import {
   CreditCard,
   Clock,
   User,
-  History,
   AlertTriangle,
   CircleCheck,
   Eye,
   FileText,
   Folder,
-  Search,
-  Plus,
-  Bell,
 } from "lucide-react";
 
 import PageHeader from "@/components/PageHeader";
 import SelectField from "@/components/SelectField";
+import { driversApi } from "@/services/api/drivers";
+
+type DriverFormData = {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  dob: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
+  driversLicenceNumber: string;
+  licenceExpiry: string;
+  passportNumber: string;
+  visaExpiry: string;
+  abn: string;
+  accountStatus: string;
+  kycStatus: string;
+  reasonForChange: string;
+};
+
+type DriverDetail = Record<string, unknown>;
+
+const EMPTY_FORM_DATA: DriverFormData = {
+  firstName: "",
+  middleName: "",
+  lastName: "",
+  email: "",
+  phoneNumber: "",
+  dob: "",
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  state: "",
+  zipCode: "",
+  country: "",
+  driversLicenceNumber: "",
+  licenceExpiry: "",
+  passportNumber: "",
+  visaExpiry: "",
+  abn: "",
+  accountStatus: "",
+  kycStatus: "",
+  reasonForChange: "",
+};
+
+const isRecord = (value: unknown): value is DriverDetail =>
+  typeof value === "object" && value !== null;
+
+const asRecord = (value: unknown): DriverDetail => (isRecord(value) ? value : {});
+
+const nestedRecord = (record: DriverDetail, key: string): DriverDetail =>
+  asRecord(record[key]);
+
+const pickText = (...values: unknown[]) => {
+  const value = values.find(
+    (item) => typeof item === "string" && item.trim().length > 0,
+  );
+  return typeof value === "string" ? value : "";
+};
+
+const toDateInputValue = (value: unknown) => {
+  if (!value || typeof value !== "string") return "";
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+  return value.slice(0, 10);
+};
+
+const formatDate = (value: unknown) => {
+  if (!value || typeof value !== "string") return "--";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString();
+};
+
+const formatDateTime = (value: unknown) => {
+  if (!value || typeof value !== "string") return "--";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+};
+
+const splitName = (name?: string) => {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || "",
+    lastName: parts.length > 1 ? parts.slice(1).join(" ") : "",
+  };
+};
+
+const normalizeDriverToForm = (driver: DriverDetail): DriverFormData => {
+  const personal = nestedRecord(driver, "personalInformation");
+  const address = nestedRecord(driver, "addressInformation");
+  const documentInfo = nestedRecord(driver, "documentInformation");
+  const system = nestedRecord(driver, "systemInformation");
+  const nameParts = splitName(pickText(driver.name));
+
+  return {
+    firstName: pickText(personal.firstName, driver.firstName, nameParts.firstName),
+    middleName: pickText(personal.middleName, driver.middleName),
+    lastName: pickText(personal.lastName, driver.lastName, nameParts.lastName),
+    email: pickText(personal.email, driver.email),
+    phoneNumber: pickText(personal.phone, driver.phone, driver.phoneNumber),
+    dob: toDateInputValue(personal.dob || driver.dob),
+    addressLine1: pickText(address.addressLine1, driver.addressLine1),
+    addressLine2: pickText(address.addressLine2, driver.addressLine2),
+    city: pickText(address.city, driver.city),
+    state: pickText(address.state, driver.state),
+    zipCode: pickText(address.postalCode, address.zipCode, driver.postalCode, driver.zipCode),
+    country: pickText(address.country, driver.country),
+    driversLicenceNumber: pickText(
+      documentInfo.driverLicenceNumber,
+      driver.driverLicenceNumber,
+      driver.driversLicenceNumber,
+    ),
+    licenceExpiry: toDateInputValue(
+      documentInfo.licenceExpiryDate || driver.licenceExpiry || driver.licenseExpiry,
+    ),
+    passportNumber: pickText(documentInfo.passportNumber, driver.passportNumber),
+    visaExpiry: toDateInputValue(documentInfo.visaExpiryDate || driver.visaExpiry),
+    abn: pickText(documentInfo.abn, driver.abn),
+    accountStatus: pickText(system.accountStatus, driver.accountStatus),
+    kycStatus: pickText(system.kycStatus, driver.kycStatus),
+    reasonForChange: "",
+  };
+};
+
+const buildDriverUpdatePayload = (formData: DriverFormData) => ({
+  firstName: formData.firstName,
+  middleName: formData.middleName,
+  lastName: formData.lastName,
+  name: [formData.firstName, formData.lastName].filter(Boolean).join(" "),
+  email: formData.email,
+  phone: formData.phoneNumber,
+  phoneNumber: formData.phoneNumber,
+  dob: formData.dob,
+  addressLine1: formData.addressLine1,
+  addressLine2: formData.addressLine2,
+  city: formData.city,
+  state: formData.state,
+  postalCode: formData.zipCode,
+  zipCode: formData.zipCode,
+  country: formData.country,
+  driverLicenceNumber: formData.driversLicenceNumber,
+  licenceExpiry: formData.licenceExpiry,
+  passportNumber: formData.passportNumber,
+  visaExpiry: formData.visaExpiry,
+  abn: formData.abn,
+  accountStatus: formData.accountStatus,
+  kycStatus: formData.kycStatus,
+  reasonForChange: formData.reasonForChange,
+  personalInformation: {
+    firstName: formData.firstName,
+    middleName: formData.middleName,
+    lastName: formData.lastName,
+    email: formData.email,
+    phone: formData.phoneNumber,
+    dob: formData.dob,
+  },
+  addressInformation: {
+    addressLine1: formData.addressLine1,
+    addressLine2: formData.addressLine2,
+    city: formData.city,
+    state: formData.state,
+    postalCode: formData.zipCode,
+    country: formData.country,
+  },
+  documentInformation: {
+    driverLicenceNumber: formData.driversLicenceNumber,
+    licenceExpiryDate: formData.licenceExpiry,
+    passportNumber: formData.passportNumber,
+    visaExpiryDate: formData.visaExpiry,
+    abn: formData.abn,
+  },
+  systemInformation: {
+    accountStatus: formData.accountStatus,
+    kycStatus: formData.kycStatus,
+  },
+});
+
+const getLicenceAlert = (licenceExpiry: string) => {
+  if (!licenceExpiry) {
+    return {
+      isWarning: true,
+      title: "Licence Expiry Missing",
+      message: "Add a licence expiry date before saving.",
+    };
+  }
+
+  const expiry = new Date(`${licenceExpiry}T00:00:00`);
+  if (Number.isNaN(expiry.getTime())) {
+    return {
+      isWarning: true,
+      title: "Licence Expiry Invalid",
+      message: "Check the licence expiry date format.",
+    };
+  }
+
+  const days = Math.ceil((expiry.getTime() - Date.now()) / 86_400_000);
+  if (days < 0) {
+    return {
+      isWarning: true,
+      title: "Licence Expired",
+      message: `Expired on ${formatDate(licenceExpiry)}.`,
+    };
+  }
+
+  if (days <= 30) {
+    return {
+      isWarning: true,
+      title: "Licence Expiring Soon",
+      message: `Expires on ${formatDate(licenceExpiry)} (${days} days).`,
+    };
+  }
+
+  return {
+    isWarning: false,
+    title: "Licence Valid",
+    message: `Expires on ${formatDate(licenceExpiry)}.`,
+  };
+};
 
 export default function EditDriverPage() {
   const params = useParams();
   const router = useRouter();
-  const id = params.id;
+  const driverId = String(params.id || "");
+  const [driver, setDriver] = useState<DriverDetail | null>(null);
+  const [formData, setFormData] = useState<DriverFormData>(EMPTY_FORM_DATA);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock initial data
-  const [formData, setFormData] = useState({
-    firstName: "Michael",
-    middleName: "David",
-    lastName: "Johnson",
-    email: "michael.johnson@email.com",
-    phoneNumber: "+61 412 345 678",
-    dob: "1985-03-15",
-    addressLine1: "123 Collins Street",
-    addressLine2: "Apt 4B",
-    city: "Melbourne",
-    state: "Victoria",
-    zipCode: "3000",
-    country: "Australia",
-    driversLicenceNumber: "123456789",
-    licenceExpiry: "2025-08-15",
-    passportNumber: "A123456789",
-    visaExpiry: "2025-08-15",
-    abn: "12 345 678 901",
-    reasonForChange: "",
-  });
+  useEffect(() => {
+    if (!driverId) return;
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fetchDriver = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await driversApi.getDriverById(driverId);
+        const responseData = asRecord(res.data);
+        const payload = isRecord(responseData.driver)
+          ? responseData.driver
+          : responseData;
+        if (res.success && payload) {
+          setDriver(payload);
+          setFormData(normalizeDriverToForm(payload));
+        } else {
+          setError(res.message || "Driver details were not found.");
+        }
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error ? err.message : "Failed to load driver details.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDriver();
+  }, [driverId]);
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
+  ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
+
+  const handleCancel = () => {
+    router.push(`/drivers/${driverId}`);
+  };
+
+  const handleViewHistory = () => {
+    router.push(`/drivers/${driverId}?tab=${encodeURIComponent("Audit & Activity")}`);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await driversApi.updateDriver(
+        driverId,
+        buildDriverUpdatePayload(formData) as Record<string, unknown>,
+      );
+      router.push(`/drivers/${driverId}`);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to save driver changes.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const driverRecord = driver || {};
+  const personalInformation = nestedRecord(driverRecord, "personalInformation");
+  const systemInformation = nestedRecord(driverRecord, "systemInformation");
+  const lastModifiedByRecord = nestedRecord(driverRecord, "lastModifiedBy");
+  const updatedByRecord = nestedRecord(driverRecord, "updatedBy");
+  const systemLastModifiedByRecord = nestedRecord(systemInformation, "lastModifiedBy");
+  const createdByRecord = nestedRecord(driverRecord, "createdBy");
+  const systemCreatedByRecord = nestedRecord(systemInformation, "createdBy");
+  const driverDisplayId = pickText(systemInformation.driverId, driverRecord.driverId, driverId);
+  const dateJoined = systemInformation.dateJoined || driverRecord.createdAt;
+  const lastLogin =
+    systemInformation.lastLogin || driverRecord.lastLoginAt || driverRecord.lastLogin;
+  const linkedPayment = pickText(systemInformation.linkedPayment, driverRecord.linkedPayment);
+  const profileImage =
+    pickText(driverRecord.avatar, driverRecord.profileImage, personalInformation.avatar) ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      [formData.firstName, formData.lastName].filter(Boolean).join(" ") || "Driver",
+    )}&background=E2E8F0&color=475569`;
+  const lastModifiedBy = pickText(
+    lastModifiedByRecord.name,
+    updatedByRecord.name,
+    systemLastModifiedByRecord.name,
+    systemInformation.lastModifiedBy,
+  );
+  const lastModifiedDate =
+    driverRecord.updatedAt || systemInformation.lastModifiedDate || systemInformation.updatedAt;
+  const createdBy = pickText(
+    createdByRecord.name,
+    systemCreatedByRecord.name,
+    systemInformation.createdBy,
+  );
+  const licenceAlert = getLicenceAlert(formData.licenceExpiry);
+  const requiredFieldsValid = [
+    formData.firstName,
+    formData.lastName,
+    formData.email,
+    formData.phoneNumber,
+    formData.addressLine1,
+    formData.city,
+    formData.state,
+    formData.zipCode,
+    formData.driversLicenceNumber,
+    formData.licenceExpiry,
+  ].every((value) => value.trim().length > 0);
+
+  if (loading) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center", color: COLORS.TEXT_SECONDARY }}>
+        Loading driver details...
+      </div>
+    );
+  }
+
+  if (!driver && error) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center", color: COLORS.ERROR_MAIN }}>
+        {error}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -94,7 +417,7 @@ export default function EditDriverPage() {
         </Link>
         <ChevronRight size={12} style={{ color: COLORS.TEXT_MUTED }} />
         <Link
-          href={`/drivers/${id}`}
+          href={`/drivers/${driverId}`}
           style={{ color: COLORS.TEXT_SECONDARY, textDecoration: "none" }}
         >
           Driver Profile
@@ -104,6 +427,21 @@ export default function EditDriverPage() {
           Edit Driver
         </span>
       </div>
+
+      {error && (
+        <div
+          style={{
+            padding: "0.85rem 1rem",
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: "8px",
+            color: "#DC2626",
+            fontSize: "0.9rem",
+          }}
+        >
+          {error}
+        </div>
+      )}
 
       {/* Header Info Card */}
       <div className="card" style={{ padding: "1.25rem" }}>
@@ -119,8 +457,8 @@ export default function EditDriverPage() {
           >
             <div style={{ position: "relative" }}>
               <img
-                src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150"
-                alt="Profile"
+                src={profileImage}
+                alt={`${formData.firstName || "Driver"} profile`}
                 style={{
                   width: "80px",
                   height: "80px",
@@ -159,13 +497,17 @@ export default function EditDriverPage() {
                 >
                   {formData.email}
                 </span>
-                <span>Driver ID: DRV-2024-001234</span>
+                <span>Driver ID: {driverDisplayId || "--"}</span>
               </div>
               <div
                 style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}
               >
                 <span
-                  className="badge badge-success"
+                  className={`badge ${
+                    formData.accountStatus === "Active"
+                      ? "badge-success"
+                      : "badge-warning"
+                  }`}
                   style={{
                     fontSize: "0.7rem",
                     display: "flex",
@@ -173,7 +515,8 @@ export default function EditDriverPage() {
                     gap: "0.35rem",
                     padding: "4px 10px",
                     background: "#F0FDF4",
-                    color: "#16A34A",
+                    color:
+                      formData.accountStatus === "Active" ? "#16A34A" : "#B45309",
                   }}
                 >
                   <div
@@ -184,10 +527,14 @@ export default function EditDriverPage() {
                       background: "currentColor",
                     }}
                   />
-                  Active
+                  {formData.accountStatus || "No Status"}
                 </span>
                 <span
-                  className="badge badge-success"
+                  className={`badge ${
+                    formData.kycStatus === "Verified"
+                      ? "badge-success"
+                      : "badge-warning"
+                  }`}
                   style={{
                     fontSize: "0.7rem",
                     display: "flex",
@@ -195,10 +542,10 @@ export default function EditDriverPage() {
                     gap: "0.35rem",
                     padding: "4px 10px",
                     background: "#F0FDF4",
-                    color: "#16A34A",
+                    color: formData.kycStatus === "Verified" ? "#16A34A" : "#B45309",
                   }}
                 >
-                  <ShieldCheck size={12} /> KYC Verified
+                  <ShieldCheck size={12} /> {formData.kycStatus || "KYC Pending"}
                 </span>
               </div>
             </div>
@@ -206,7 +553,8 @@ export default function EditDriverPage() {
 
           <div style={{ display: "flex", gap: "0.75rem" }}>
             <button
-              onClick={() => router.push(`/drivers/${id}`)}
+              onClick={handleSave}
+              disabled={saving}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -218,13 +566,14 @@ export default function EditDriverPage() {
                 fontWeight: 600,
                 fontSize: "0.9rem",
                 border: "none",
-                cursor: "pointer",
+                cursor: saving ? "not-allowed" : "pointer",
+                opacity: saving ? 0.7 : 1,
               }}
             >
-              <Save size={16} /> Save Changes
+              <Save size={16} /> {saving ? "Saving..." : "Save Changes"}
             </button>
             <button
-              onClick={() => router.push(`/drivers/${id}`)}
+              onClick={handleCancel}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -492,6 +841,9 @@ export default function EditDriverPage() {
                   <div style={{ position: "relative", width: "100%" }}>
                     <SelectField
                       label="Account Status"
+                      name="accountStatus"
+                      value={formData.accountStatus}
+                      onChange={handleChange}
                       options={[
                         { label: "Active", value: "Active" },
                         { label: "Suspended", value: "Suspended" },
@@ -511,6 +863,9 @@ export default function EditDriverPage() {
                 >
                   <SelectField
                     label="KYC Status"
+                    name="kycStatus"
+                    value={formData.kycStatus}
+                    onChange={handleChange}
                     options={[
                       { label: "Verified", value: "Verified" },
                       {
@@ -538,9 +893,11 @@ export default function EditDriverPage() {
                   }}
                 >
                   Reason for Change
-                  <span style={{ color: COLORS.ERROR_MAIN }}>*</span>
                 </label>
                 <textarea
+                  name="reasonForChange"
+                  value={formData.reasonForChange}
+                  onChange={handleChange}
                   placeholder="Optional: Provide a reason for status change..."
                   style={{
                     width: "100%",
@@ -585,20 +942,20 @@ export default function EditDriverPage() {
                 gap: "1rem",
               }}
             >
-              <SidebarItem label="Driver ID" value="DRV-2024-001234" />
+              <SidebarItem label="Driver ID" value={driverDisplayId || "--"} />
               <SidebarItem
                 label="Date Joined"
-                value="2024-01-15"
+                value={formatDate(dateJoined)}
                 icon={<Calendar size={14} />}
               />
               <SidebarItem
                 label="Last Login"
-                value="2024-01-26 14:30"
+                value={formatDateTime(lastLogin)}
                 icon={<Clock size={14} />}
               />
               <SidebarItem
                 label="Linked Payment Method"
-                value="**** 4532 (Visa)"
+                value={linkedPayment || "--"}
                 icon={<CreditCard size={14} />}
               />
             </div>
@@ -642,8 +999,10 @@ export default function EditDriverPage() {
                   }}
                 >
                   <img
-                    src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-                    alt="Admin"
+                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      lastModifiedBy || "Admin",
+                    )}&background=E2E8F0&color=475569`}
+                    alt={lastModifiedBy || "Admin"}
                     style={{
                       width: "24px",
                       height: "24px",
@@ -652,7 +1011,7 @@ export default function EditDriverPage() {
                     }}
                   />
                   <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                    Sarah Admin
+                    {lastModifiedBy || "--"}
                   </span>
                 </div>
               </div>
@@ -667,7 +1026,7 @@ export default function EditDriverPage() {
                   Last Modified Date
                 </span>
                 <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                  2024-01-20 10:45
+                  {formatDateTime(lastModifiedDate)}
                 </span>
               </div>
             </div>
@@ -698,8 +1057,10 @@ export default function EditDriverPage() {
                   }}
                 >
                   <img
-                    src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150"
-                    alt="Admin"
+                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      createdBy || "Admin",
+                    )}&background=E2E8F0&color=475569`}
+                    alt={createdBy || "Admin"}
                     style={{
                       width: "24px",
                       height: "24px",
@@ -708,7 +1069,7 @@ export default function EditDriverPage() {
                     }}
                   />
                   <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                    John Admin
+                    {createdBy || "--"}
                   </span>
                 </div>
               </div>
@@ -723,7 +1084,7 @@ export default function EditDriverPage() {
                   Created Date
                 </span>
                 <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                  2024-01-20 10:45
+                  {formatDateTime(dateJoined)}
                 </span>
               </div>
             </div>
@@ -754,16 +1115,25 @@ export default function EditDriverPage() {
                 style={{
                   display: "flex",
                   gap: "0.75rem",
-                  backgroundColor: "#FFF7ED",
+                  backgroundColor: licenceAlert.isWarning ? "#FFF7ED" : "#F0FDF4",
                   padding: "0.85rem",
-                  border: "1px solid #FFEDD5",
+                  border: `1px solid ${
+                    licenceAlert.isWarning ? "#FFEDD5" : "#DCFCE7"
+                  }`,
                   borderRadius: "8px",
                 }}
               >
-                <AlertTriangle
-                  size={18}
-                  style={{ color: "#F97316", flexShrink: 0, marginTop: "2px" }}
-                />
+                {licenceAlert.isWarning ? (
+                  <AlertTriangle
+                    size={18}
+                    style={{ color: "#F97316", flexShrink: 0, marginTop: "2px" }}
+                  />
+                ) : (
+                  <CircleCheck
+                    size={18}
+                    style={{ color: "#16A34A", flexShrink: 0, marginTop: "2px" }}
+                  />
+                )}
                 <div
                   style={{
                     display: "flex",
@@ -775,13 +1145,18 @@ export default function EditDriverPage() {
                     style={{
                       fontSize: "0.8rem",
                       fontWeight: 700,
-                      color: "#9A3412",
+                      color: licenceAlert.isWarning ? "#9A3412" : COLORS.SUCCESS_DARK,
                     }}
                   >
-                    Licence Expiring Soon
+                    {licenceAlert.title}
                   </p>
-                  <p style={{ fontSize: "0.75rem", color: "#C2410C" }}>
-                    Expires on 2024-02-10 (15 days)
+                  <p
+                    style={{
+                      fontSize: "0.75rem",
+                      color: licenceAlert.isWarning ? "#C2410C" : "#15803D",
+                    }}
+                  >
+                    {licenceAlert.message}
                   </p>
                 </div>
               </div>
@@ -791,16 +1166,25 @@ export default function EditDriverPage() {
                 style={{
                   display: "flex",
                   gap: "0.75rem",
-                  backgroundColor: "#F0FDF4",
+                  backgroundColor: requiredFieldsValid ? "#F0FDF4" : "#FFF7ED",
                   padding: "0.85rem",
-                  border: "1px solid #DCFCE7",
+                  border: `1px solid ${
+                    requiredFieldsValid ? "#DCFCE7" : "#FFEDD5"
+                  }`,
                   borderRadius: "8px",
                 }}
               >
-                <CircleCheck
-                  size={18}
-                  style={{ color: "#16A34A", flexShrink: 0, marginTop: "2px" }}
-                />
+                {requiredFieldsValid ? (
+                  <CircleCheck
+                    size={18}
+                    style={{ color: "#16A34A", flexShrink: 0, marginTop: "2px" }}
+                  />
+                ) : (
+                  <AlertTriangle
+                    size={18}
+                    style={{ color: "#F97316", flexShrink: 0, marginTop: "2px" }}
+                  />
+                )}
                 <div
                   style={{
                     display: "flex",
@@ -812,13 +1196,22 @@ export default function EditDriverPage() {
                     style={{
                       fontSize: "0.8rem",
                       fontWeight: 700,
-                      color: COLORS.SUCCESS_DARK,
+                      color: requiredFieldsValid ? COLORS.SUCCESS_DARK : "#9A3412",
                     }}
                   >
-                    All Required Fields Valid
+                    {requiredFieldsValid
+                      ? "All Required Fields Valid"
+                      : "Required Fields Missing"}
                   </p>
-                  <p style={{ fontSize: "0.75rem", color: "#15803D" }}>
-                    No validation errors detected
+                  <p
+                    style={{
+                      fontSize: "0.75rem",
+                      color: requiredFieldsValid ? "#15803D" : "#C2410C",
+                    }}
+                  >
+                    {requiredFieldsValid
+                      ? "No validation errors detected"
+                      : "Complete highlighted required fields before saving"}
                   </p>
                 </div>
               </div>
@@ -846,6 +1239,8 @@ export default function EditDriverPage() {
               }}
             >
               <button
+                onClick={handleSave}
+                disabled={saving}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -857,11 +1252,15 @@ export default function EditDriverPage() {
                   borderRadius: "8px",
                   fontWeight: 600,
                   fontSize: "0.85rem",
+                  border: "none",
+                  cursor: saving ? "not-allowed" : "pointer",
+                  opacity: saving ? 0.7 : 1,
                 }}
               >
-                <Save size={16} /> Save Changes
+                <Save size={16} /> {saving ? "Saving..." : "Save Changes"}
               </button>
               <button
+                onClick={handleCancel}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -874,11 +1273,13 @@ export default function EditDriverPage() {
                   borderRadius: "8px",
                   fontWeight: 600,
                   fontSize: "0.85rem",
+                  cursor: "pointer",
                 }}
               >
                 <X size={16} /> Cancel & Return
               </button>
               <button
+                onClick={handleViewHistory}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -891,6 +1292,7 @@ export default function EditDriverPage() {
                   borderRadius: "8px",
                   fontWeight: 600,
                   fontSize: "0.85rem",
+                  cursor: "pointer",
                 }}
               >
                 <Eye size={16} /> View Edit History
@@ -921,22 +1323,24 @@ export default function EditDriverPage() {
               <QuickNavLink
                 icon={<User size={16} />}
                 label="View Profile"
-                href={`/drivers/${id}`}
+                href={`/drivers/${driverId}`}
               />
               <QuickNavLink
                 icon={<FileText size={16} />}
                 label="Agreements"
-                href={`/drivers/${id}?tab=Agreements`}
+                href={`/drivers/${driverId}?tab=Agreements`}
               />
               <QuickNavLink
                 icon={<CreditCard size={16} />}
                 label="Payments"
-                href={`/drivers/${id}?tab=Payments`}
+                href={`/drivers/${driverId}?tab=Payments`}
               />
               <QuickNavLink
                 icon={<Folder size={16} />}
                 label="Documents"
-                href={`/drivers/${id}?tab=Documents`}
+                href={`/drivers/${driverId}?tab=${encodeURIComponent(
+                  "Driver Documents",
+                )}`}
               />
             </div>
           </div>
@@ -1054,24 +1458,3 @@ function SidebarItem({
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "0.75rem 1rem",
-  borderRadius: "8px",
-  border: `1px solid ${COLORS.BORDER_MAIN}`,
-  background: COLORS.BG_CARD,
-  fontSize: "0.9rem",
-  color: COLORS.TEXT_MAIN,
-  outline: "none",
-  transition: "border-color 0.2s",
-};
-
-const iconRightStyle: React.CSSProperties = {
-  position: "absolute",
-  right: "1rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: COLORS.TEXT_MUTED,
-  pointerEvents: "none",
-};

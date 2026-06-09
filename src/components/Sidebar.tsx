@@ -13,7 +13,6 @@ import {
   Bell,
   Settings,
   HelpCircle,
-  History,
   LogOut,
   ChevronRight,
   User,
@@ -76,6 +75,15 @@ export default function Sidebar() {
     fetchHeaderProfile();
   }, []);
 
+  const handleLogout = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    ["admin_token", "admin_user", "token", "jwt"].forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+    router.replace("/signin");
+  };
+
   return (
     <aside className="sidebar-container">
       <div className={styles.sidebarContent}>
@@ -97,9 +105,6 @@ export default function Sidebar() {
               >
                 <item.icon size={18} className={styles.icon} />
                 <span className={styles.navLabel}>{item.name}</span>
-                {item.hasSub && (
-                  <ChevronRight size={14} className={styles.chevron} />
-                )}
               </Link>
             ))}
           </nav>
@@ -137,7 +142,13 @@ export default function Sidebar() {
               <p className={styles.userName}>{liveUserName}</p>
               <p className={styles.userRole}>Super Admin</p>
             </div>
-            <button className={styles.logoutBtn}>
+            <button
+              type="button"
+              className={styles.logoutBtn}
+              onClick={handleLogout}
+              aria-label="Logout"
+              title="Logout"
+            >
               <LogOut size={16} />
             </button>
           </div>

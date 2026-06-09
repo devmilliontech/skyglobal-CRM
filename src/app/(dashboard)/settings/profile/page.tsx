@@ -7,9 +7,9 @@ import {
   CheckCircle,
   Phone,
   Monitor,
-  Mail,
   ChevronRight,
   Pencil,
+  type LucideIcon,
 } from "lucide-react";
 import Card from "@/components/Card";
 import Button from "@/components/Button";
@@ -19,9 +19,27 @@ import InputField from "@/components/InputField";
 
 import { Switch } from "@headlessui/react";
 import { useRouter } from "next/navigation";
-import { profileApi } from "@/services/api/profile";
+import {
+  profileApi,
+  type ProfileData,
+  type Session,
+} from "@/services/api/profile";
 
-const SESSIONS = [
+type SessionView = {
+  id: string | number;
+  device: string;
+  browser: string;
+  location: string;
+  ip: string;
+  status: string;
+  statusColor: string;
+  action: string;
+  icon: LucideIcon;
+};
+
+const AUTH_STORAGE_KEYS = ["admin_token", "admin_user", "token", "jwt"];
+
+const SESSIONS: SessionView[] = [
   {
     id: 1,
     device: 'MacBook Pro 16"',
@@ -52,9 +70,29 @@ export default function ProfilePage() {
   const [enable2FA, setEnable2FA] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [profileData, setProfileData] = useState<any>(null);
-  const [sessions, setSessions] = useState<any[]>(SESSIONS);
-  const [errors, setErrors] = useState<any>({});
+  const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const [sessions, setSessions] = useState<SessionView[]>(SESSIONS);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isLoggingOutAllDevices, setIsLoggingOutAllDevices] = useState(false);
+
+  const clearAdminSession = () => {
+    AUTH_STORAGE_KEYS.forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+  };
+
+  const handleLogoutAllDevices = async () => {
+    try {
+      setIsLoggingOutAllDevices(true);
+      await profileApi.revokeAllSessions();
+    } catch (err) {
+      console.error("Failed to revoke all sessions:", err);
+    } finally {
+      clearAdminSession();
+      router.replace("/signin");
+    }
+  };
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -95,7 +133,7 @@ export default function ProfilePage() {
         if (sessionsRes.status === "fulfilled" && sessionsRes.value?.data) {
           const apiSessions = (
             Array.isArray(sessionsRes.value.data) ? sessionsRes.value.data : []
-          ).map((s: any, i: number) => ({
+          ).map((s: Session, i: number) => ({
             id: s._id || i + 1,
             device: s.device || "Unknown Device",
             browser: s.browser || "Unknown Browser",
@@ -112,7 +150,7 @@ export default function ProfilePage() {
           }));
           if (apiSessions.length) setSessions(apiSessions);
         }
-      } catch (err) {
+      } catch {
         // Keep fallback data
       } finally {
         setIsLoading(false);
@@ -179,9 +217,11 @@ export default function ProfilePage() {
         setProfileData(res.data);
         alert("Profile updated successfully");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert(err.message || "Failed to update profile");
+      alert(
+        err instanceof Error ? err.message : "Failed to update profile",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -537,21 +577,38 @@ export default function ProfilePage() {
                 borderRadius: "8px",
                 border: "1px solid #FEE2E2",
                 textAlign: "center",
-                cursor: "pointer",
                 color: "#EF4444",
                 fontSize: "0.85rem",
                 fontWeight: 600,
               }}
             >
-              <AlertCircle
-                size={16}
+              <button
+                type="button"
+                onClick={handleLogoutAllDevices}
+                disabled={isLoggingOutAllDevices}
                 style={{
-                  display: "inline",
-                  marginRight: "6px",
-                  verticalAlign: "middle",
+                  width: "100%",
+                  border: "none",
+                  background: "transparent",
+                  color: "inherit",
+                  cursor: isLoggingOutAllDevices ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                  opacity: isLoggingOutAllDevices ? 0.7 : 1,
                 }}
-              />
-              Logout all devices
+              >
+                <AlertCircle
+                  size={16}
+                  style={{
+                    flexShrink: 0,
+                  }}
+                />
+                {isLoggingOutAllDevices ? "Logging out..." : "Logout all devices"}
+              </button>
             </div>
           </Card>
         </div>
@@ -922,95 +979,111 @@ export default function ProfilePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {SESSIONS.map((session) => (
-                        <tr
-                          key={session.id}
-                          style={{
-                            borderBottom: `1px solid ${COLORS.BORDER_MAIN}`,
-                          }}
-                        >
-                          <td style={cellStyle}>
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "1rem",
-                              }}
-                            >
-                              <div style={{ color: "#6B7280" }}>
-                                <session.icon size={20} />
-                              </div>
-                              <div>
-                                <p
-                                  style={{
-                                    fontSize: "0.85rem",
-                                    fontWeight: 600,
-                                    color: COLORS.TEXT_MAIN,
-                                  }}
-                                >
-                                  {session.device}
-                                </p>
-                                <p
-                                  style={{
-                                    fontSize: "0.75rem",
-                                    color: COLORS.TEXT_SECONDARY,
-                                  }}
-                                >
-                                  {session.browser}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-                          <td style={cellStyle}>
-                            <span
-                              style={{
-                                fontSize: "0.85rem",
-                                color: COLORS.TEXT_MAIN,
-                              }}
-                            >
-                              {session.location}
-                            </span>
-                          </td>
-                          <td style={cellStyle}>
-                            <span
-                              style={{
-                                fontSize: "0.85rem",
-                                color: COLORS.TEXT_MAIN,
-                              }}
-                            >
-                              {session.ip}
-                            </span>
-                          </td>
-                          <td style={cellStyle}>
-                            <span
-                              style={{
-                                fontSize: "0.8rem",
-                                color: session.statusColor,
-                                fontWeight: 600,
-                              }}
-                            >
-                              {session.status}
-                            </span>
-                          </td>
-                          <td style={{ ...cellStyle, textAlign: "right" }}>
-                            <button
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color:
-                                  session.action === "Logout"
-                                    ? "#6B7280"
-                                    : "#EF4444",
-                                fontSize: "0.85rem",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                              }}
-                            >
-                              {session.action}
-                            </button>
+                      {isLoading ? (
+                        <tr>
+                          <td
+                            colSpan={5}
+                            style={{
+                              ...cellStyle,
+                              textAlign: "center",
+                              color: COLORS.TEXT_SECONDARY,
+                            }}
+                          >
+                            Loading sessions...
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        sessions.map((session) => (
+                          <tr
+                            key={session.id}
+                            style={{
+                              borderBottom: `1px solid ${COLORS.BORDER_MAIN}`,
+                            }}
+                          >
+                            <td style={cellStyle}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "1rem",
+                                }}
+                              >
+                                <div style={{ color: "#6B7280" }}>
+                                  <session.icon size={20} />
+                                </div>
+                                <div>
+                                  <p
+                                    style={{
+                                      fontSize: "0.85rem",
+                                      fontWeight: 600,
+                                      color: COLORS.TEXT_MAIN,
+                                    }}
+                                  >
+                                    {session.device}
+                                  </p>
+                                  <p
+                                    style={{
+                                      fontSize: "0.75rem",
+                                      color: COLORS.TEXT_SECONDARY,
+                                    }}
+                                  >
+                                    {session.browser}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={cellStyle}>
+                              <span
+                                style={{
+                                  fontSize: "0.85rem",
+                                  color: COLORS.TEXT_MAIN,
+                                }}
+                              >
+                                {session.location}
+                              </span>
+                            </td>
+                            <td style={cellStyle}>
+                              <span
+                                style={{
+                                  fontSize: "0.85rem",
+                                  color: COLORS.TEXT_MAIN,
+                                }}
+                              >
+                                {session.ip}
+                              </span>
+                            </td>
+                            <td style={cellStyle}>
+                              <span
+                                style={{
+                                  fontSize: "0.8rem",
+                                  color: session.statusColor,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {session.status}
+                              </span>
+                            </td>
+                            <td style={{ ...cellStyle, textAlign: "right" }}>
+                              <button
+                                type="button"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color:
+                                    session.action === "Logout"
+                                      ? "#6B7280"
+                                      : "#EF4444",
+                                  fontSize: "0.85rem",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {session.action}
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>

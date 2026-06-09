@@ -9,11 +9,12 @@ import {
   AlertTriangle,
   Download,
   Filter,
-  MoreHorizontal,
   ChevronRight,
   ChevronLeft,
   Eye,
   Edit2,
+  Trash,
+  X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
@@ -22,9 +23,18 @@ import StatCard from "@/components/StatCard";
 import Button from "@/components/Button";
 import SelectField from "@/components/SelectField";
 import StatusBadge from "@/components/StatusBadge";
-import { ownersApi } from "@/services/api/owners";
+import {
+  ownersApi,
+  type Owner,
+  type OwnerReview,
+  type OwnerStats,
+  type OwnerUpdateRequest,
+} from "@/services/api/owners";
 
 const OWNERS_PAGE_LIMIT = 10;
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
 
 const getVisiblePages = (currentPage: number, totalPages: number) => {
   const safeTotalPages = Math.max(1, totalPages);
@@ -48,11 +58,25 @@ export default function OwnersManagementPage() {
   const [dateJoined, setDateJoined] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statsData, setStatsData] = useState<any>(null);
-  const [ownersData, setOwnersData] = useState<any[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [statsData, setStatsData] = useState<OwnerStats | null>(null);
+  const [ownersData, setOwnersData] = useState<Owner[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
+  const [reviewOwner, setReviewOwner] = useState<OwnerReview | null>(null);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const [editOwner, setEditOwner] = useState<Owner | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    status: "Active",
+    complianceStatus: "Compliant",
+  });
+  const [isSavingOwner, setIsSavingOwner] = useState(false);
+  const [deletingOwnerId, setDeletingOwnerId] = useState<string | null>(null);
 
   const fetchOwners = useCallback(async (currentPage = 1) => {
     try {
@@ -76,8 +100,8 @@ export default function OwnersManagementPage() {
         setPage(pagination.page ?? currentPage);
         setPages(Math.max(1, pagination.pages ?? 1));
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load owners data");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to load owners data"));
       setStatsData(null);
       setOwnersData([]);
       setTotal(0);
@@ -104,6 +128,119 @@ export default function OwnersManagementPage() {
   const handlePageChange = (nextPage: number) => {
     if (nextPage < 1 || nextPage > pages || nextPage === page) return;
     fetchOwners(nextPage);
+  };
+
+  const getOwnerActionId = (owner: Owner) => owner._id || owner.id || "";
+
+  const handleReviewOwner = async (owner: Owner) => {
+    const ownerId = getOwnerActionId(owner);
+    if (!ownerId) {
+      setActionError("Owner id is missing. Unable to review this owner.");
+      return;
+    }
+
+    setIsReviewOpen(true);
+    setReviewOwner(null);
+    setActionError(null);
+    setIsReviewLoading(true);
+
+    try {
+      const response = await ownersApi.reviewOwner(ownerId);
+      setReviewOwner(response.data);
+    } catch (err: unknown) {
+      setActionError(getErrorMessage(err, "Failed to load owner review"));
+    } finally {
+      setIsReviewLoading(false);
+    }
+  };
+
+  const handleEditOwner = async (owner: Owner) => {
+    const ownerId = getOwnerActionId(owner);
+    if (!ownerId) {
+      setActionError("Owner id is missing. Unable to edit this owner.");
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      const response = await ownersApi.reviewOwner(ownerId);
+      const latestOwner = response.data;
+      setEditOwner(latestOwner);
+      setEditForm({
+        name: latestOwner.name || "",
+        email: latestOwner.email || "",
+        phone: latestOwner.phone || "",
+        status: latestOwner.status || "Active",
+        complianceStatus: latestOwner.compliance || "Compliant",
+      });
+    } catch {
+      setEditOwner(owner);
+      setEditForm({
+        name: owner.name || "",
+        email: owner.email || "",
+        phone: owner.phone || "",
+        status: owner.status || "Active",
+        complianceStatus: owner.compliance || "Compliant",
+      });
+    }
+  };
+
+  const handleUpdateOwner = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editOwner || isSavingOwner) return;
+
+    const ownerId = getOwnerActionId(editOwner);
+    if (!ownerId) {
+      setActionError("Owner id is missing. Unable to save changes.");
+      return;
+    }
+
+    const payload: OwnerUpdateRequest = {
+      name: editForm.name.trim(),
+      email: editForm.email.trim(),
+      phone: editForm.phone.trim(),
+      status: editForm.status,
+      complianceStatus: editForm.complianceStatus,
+    };
+
+    try {
+      setIsSavingOwner(true);
+      setActionError(null);
+      await ownersApi.updateOwner(ownerId, payload);
+      setEditOwner(null);
+      await fetchOwners(page);
+    } catch (err: unknown) {
+      setActionError(getErrorMessage(err, "Failed to update owner"));
+    } finally {
+      setIsSavingOwner(false);
+    }
+  };
+
+  const handleDeleteOwner = async (owner: Owner) => {
+    const ownerId = getOwnerActionId(owner);
+    if (!ownerId) {
+      setActionError("Owner id is missing. Unable to delete this owner.");
+      return;
+    }
+
+    const ownerName = owner.name || owner.email || owner.id || "this owner";
+    const confirmed = window.confirm(
+      `Delete ${ownerName}? This action cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingOwnerId(ownerId);
+      setActionError(null);
+      await ownersApi.deleteOwner(ownerId);
+      const nextPage = ownersData.length === 1 && page > 1 ? page - 1 : page;
+      await fetchOwners(nextPage);
+    } catch (err: unknown) {
+      setActionError(getErrorMessage(err, "Failed to delete owner"));
+    } finally {
+      setDeletingOwnerId(null);
+    }
   };
 
   const visiblePages = getVisiblePages(page, pages);
@@ -335,6 +472,22 @@ export default function OwnersManagementPage() {
           </div>
         )}
 
+        {actionError && (
+          <div
+            style={{
+              margin: "1rem 1.5rem 0",
+              padding: "0.85rem 1rem",
+              borderRadius: "8px",
+              border: "1px solid #FECACA",
+              background: "#FEF2F2",
+              color: "#DC2626",
+              fontSize: "0.85rem",
+            }}
+          >
+            {actionError}
+          </div>
+        )}
+
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -402,7 +555,7 @@ export default function OwnersManagementPage() {
                 </tr>
               ) : ownersData.map((owner, i) => (
                 <tr
-                  key={i}
+                  key={owner._id || owner.id || i}
                   style={{
                     borderBottom: `1px solid ${COLORS.BORDER_MAIN}`,
                     transition: "background-color 0.2s",
@@ -494,7 +647,7 @@ export default function OwnersManagementPage() {
                     {owner.activeListings}
                   </td>
                   <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <StatusBadge status={owner.compliance} />
+                    <StatusBadge status={owner.compliance || "--"} />
                   </td>
                   <td
                     style={{
@@ -506,22 +659,59 @@ export default function OwnersManagementPage() {
                     {owner.revenue}
                   </td>
                   <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <StatusBadge status={owner.status} />
+                    <StatusBadge status={owner.status || "--"} />
                   </td>
                   <td style={{ padding: "1.25rem 1.5rem" }}>
                     <div
                       style={{
                         display: "flex",
                         gap: "0.75rem",
-                        color: COLORS.PRIMARY_MAIN,
                       }}
                     >
-                      <Eye size={18} style={{ cursor: "pointer" }} />
-                      <Edit2 size={18} style={{ cursor: "pointer" }} />
-                      <MoreHorizontal
-                        size={18}
-                        style={{ cursor: "pointer", color: COLORS.TEXT_MUTED }}
-                      />
+                      <button
+                        type="button"
+                        onClick={() => handleReviewOwner(owner)}
+                        style={{
+                          ...actionButtonStyle,
+                          color: COLORS.PRIMARY_MAIN,
+                        }}
+                        aria-label={`Review ${owner.name || "owner"}`}
+                        title="Review"
+                      >
+                        <Eye size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleEditOwner(owner)}
+                        style={{
+                          ...actionButtonStyle,
+                          color: COLORS.PRIMARY_MAIN,
+                        }}
+                        aria-label={`Edit ${owner.name || "owner"}`}
+                        title="Edit"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingOwnerId === getOwnerActionId(owner)}
+                        onClick={() => handleDeleteOwner(owner)}
+                        style={{
+                          ...actionButtonStyle,
+                          color:
+                            deletingOwnerId === getOwnerActionId(owner)
+                              ? COLORS.GRAY_400
+                              : COLORS.ERROR_MAIN,
+                          cursor:
+                            deletingOwnerId === getOwnerActionId(owner)
+                              ? "not-allowed"
+                              : "pointer",
+                        }}
+                        aria-label={`Delete ${owner.name || "owner"}`}
+                        title="Delete"
+                      >
+                        <Trash size={18} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -587,6 +777,147 @@ export default function OwnersManagementPage() {
           </div>
         </div>
       </Card>
+
+      {isReviewOpen && (
+        <OwnerActionModal
+          title="Review Owner"
+          subtitle="Owner profile, account status, and platform summary"
+          onClose={() => {
+            setIsReviewOpen(false);
+            setReviewOwner(null);
+          }}
+        >
+          {isReviewLoading ? (
+            <p style={modalMutedTextStyle}>Loading owner review...</p>
+          ) : reviewOwner ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.85rem" }}>
+                <img
+                  src={reviewOwner.avatar}
+                  alt={reviewOwner.name || "Owner"}
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                  }}
+                />
+                <div>
+                  <p style={{ fontWeight: 800, color: COLORS.TEXT_MAIN }}>
+                    {reviewOwner.name || "Owner"}
+                  </p>
+                  <p style={{ fontSize: "0.8rem", color: COLORS.TEXT_SECONDARY }}>
+                    ID: {reviewOwner.id || reviewOwner._id}
+                  </p>
+                </div>
+              </div>
+
+              <div style={modalGridStyle}>
+                <InfoItem label="Email" value={reviewOwner.email || "--"} />
+                <InfoItem label="Phone" value={reviewOwner.phone || "--"} />
+                <InfoItem label="Status" value={reviewOwner.status || "--"} />
+                <InfoItem
+                  label="Compliance"
+                  value={reviewOwner.compliance || "--"}
+                />
+                <InfoItem
+                  label="Vehicles"
+                  value={String(reviewOwner.vehicles ?? 0)}
+                />
+                <InfoItem
+                  label="Active Listings"
+                  value={String(reviewOwner.activeListings ?? 0)}
+                />
+                <InfoItem label="Revenue" value={reviewOwner.revenue || "--"} />
+                <InfoItem label="Joined" value={reviewOwner.joinDate || "--"} />
+              </div>
+            </div>
+          ) : (
+            <p style={modalMutedTextStyle}>
+              No owner details were returned for review.
+            </p>
+          )}
+        </OwnerActionModal>
+      )}
+
+      {editOwner && (
+        <OwnerActionModal
+          title="Edit Owner"
+          subtitle={editOwner.id ? `ID: ${editOwner.id}` : undefined}
+          onClose={() => setEditOwner(null)}
+        >
+          <form
+            onSubmit={handleUpdateOwner}
+            style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
+          >
+            <TextInput
+              label="Owner Name"
+              value={editForm.name}
+              onChange={(value) =>
+                setEditForm((current) => ({ ...current, name: value }))
+              }
+              required
+            />
+            <TextInput
+              label="Email"
+              value={editForm.email}
+              onChange={(value) =>
+                setEditForm((current) => ({ ...current, email: value }))
+              }
+              type="email"
+              required
+            />
+            <TextInput
+              label="Phone"
+              value={editForm.phone}
+              onChange={(value) =>
+                setEditForm((current) => ({ ...current, phone: value }))
+              }
+            />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <SelectInput
+                label="Status"
+                value={editForm.status}
+                onChange={(value) =>
+                  setEditForm((current) => ({ ...current, status: value }))
+                }
+                options={["Active", "Suspended"]}
+              />
+              <SelectInput
+                label="Compliance"
+                value={editForm.complianceStatus}
+                onChange={(value) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    complianceStatus: value,
+                  }))
+                }
+                options={["Compliant", "Has Issues", "Expiring Soon"]}
+              />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "0.75rem",
+                paddingTop: "0.75rem",
+                borderTop: `1px solid ${COLORS.BORDER_MAIN}`,
+              }}
+            >
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => setEditOwner(null)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSavingOwner}>
+                {isSavingOwner ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          </form>
+        </OwnerActionModal>
+      )}
     </div>
   );
 }
@@ -605,3 +936,214 @@ const paginationButtonStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
 };
+
+const actionButtonStyle: React.CSSProperties = {
+  width: "28px",
+  height: "28px",
+  border: "none",
+  background: "transparent",
+  borderRadius: "6px",
+  padding: 0,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.35)",
+  display: "flex",
+  justifyContent: "flex-end",
+  zIndex: 1000,
+};
+
+const modalPanelStyle: React.CSSProperties = {
+  width: "460px",
+  maxWidth: "100vw",
+  height: "100vh",
+  background: COLORS.BG_CARD,
+  boxShadow: "-12px 0 32px rgba(15, 23, 42, 0.16)",
+  display: "flex",
+  flexDirection: "column",
+};
+
+const modalHeaderStyle: React.CSSProperties = {
+  padding: "1.25rem 1.5rem",
+  borderBottom: `1px solid ${COLORS.BORDER_MAIN}`,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "1rem",
+};
+
+const modalBodyStyle: React.CSSProperties = {
+  padding: "1.5rem",
+  overflowY: "auto",
+  flex: 1,
+};
+
+const modalGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "0.85rem",
+};
+
+const modalMutedTextStyle: React.CSSProperties = {
+  color: COLORS.TEXT_SECONDARY,
+  fontSize: "0.9rem",
+};
+
+const fieldLabelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: "0.78rem",
+  fontWeight: 700,
+  color: COLORS.TEXT_SECONDARY,
+  marginBottom: "0.35rem",
+};
+
+const fieldControlStyle: React.CSSProperties = {
+  width: "100%",
+  border: `1px solid ${COLORS.BORDER_MAIN}`,
+  borderRadius: "8px",
+  padding: "0.65rem 0.75rem",
+  fontSize: "0.9rem",
+  color: COLORS.TEXT_MAIN,
+  background: COLORS.BG_CARD,
+  outline: "none",
+};
+
+function OwnerActionModal({
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={modalOverlayStyle}>
+      <section style={modalPanelStyle} aria-modal="true" role="dialog">
+        <div style={modalHeaderStyle}>
+          <div>
+            <h2
+              style={{
+                fontSize: "1rem",
+                fontWeight: 800,
+                color: COLORS.TEXT_MAIN,
+                marginBottom: "0.25rem",
+              }}
+            >
+              {title}
+            </h2>
+            {subtitle && (
+              <p style={{ fontSize: "0.8rem", color: COLORS.TEXT_SECONDARY }}>
+                {subtitle}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              ...actionButtonStyle,
+              color: COLORS.TEXT_SECONDARY,
+            }}
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div style={modalBodyStyle}>{children}</div>
+      </section>
+    </div>
+  );
+}
+
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${COLORS.BORDER_MAIN}`,
+        borderRadius: "8px",
+        padding: "0.75rem",
+        background: "#F9FAFB",
+      }}
+    >
+      <p style={{ fontSize: "0.72rem", color: COLORS.TEXT_SECONDARY }}>
+        {label}
+      </p>
+      <p
+        style={{
+          fontSize: "0.86rem",
+          fontWeight: 700,
+          color: COLORS.TEXT_MAIN,
+          marginTop: "0.2rem",
+          overflowWrap: "anywhere",
+        }}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function TextInput({
+  label,
+  value,
+  onChange,
+  type = "text",
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <label>
+      <span style={fieldLabelStyle}>{label}</span>
+      <input
+        type={type}
+        required={required}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        style={fieldControlStyle}
+      />
+    </label>
+  );
+}
+
+function SelectInput({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label>
+      <span style={fieldLabelStyle}>{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        style={fieldControlStyle}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}

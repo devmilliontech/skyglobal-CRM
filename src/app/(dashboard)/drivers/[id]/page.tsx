@@ -3,7 +3,7 @@ import { COLORS } from "@/constants/Constant";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter, useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { driversApi } from "@/services/api/drivers";
 import {
   ChevronRight,
@@ -30,11 +30,158 @@ import DriverAuditActivity from "@/components/DriverAuditActivity";
 import DriverAgreements from "@/components/DriverAgreements";
 import DriverDocuments from "@/components/DriverDocuments";
 
+const DRIVER_TABS = [
+  "Profile Details",
+  "KYC Verification Queue",
+  "Payments",
+  "Driver Documents",
+  "Agreements",
+  "Audit & Activity",
+] as const;
+
+type DriverTab = (typeof DRIVER_TABS)[number];
+
+type DriverSection = Record<string, unknown>;
+
+type DriverDetail = {
+  personalInformation?: DriverSection;
+  systemInformation?: DriverSection;
+  addressInformation?: DriverSection;
+  documentInformation?: DriverSection;
+  complianceStatus?: DriverSection;
+  driver?: unknown;
+  [key: string]: unknown;
+};
+
+const isDriverDetail = (value: unknown): value is DriverDetail =>
+  typeof value === "object" && value !== null;
+
+const getDriverPayload = (data: unknown): DriverDetail | null => {
+  if (!isDriverDetail(data)) return null;
+  return isDriverDetail(data.driver) ? data.driver : data;
+};
+
+const asRecord = (value: unknown): DriverSection =>
+  isDriverDetail(value) ? value : {};
+
+const nestedRecord = (record: DriverSection, key: string): DriverSection =>
+  asRecord(record[key]);
+
+const pickText = (...values: unknown[]) => {
+  const value = values.find(
+    (item) => typeof item === "string" && item.trim().length > 0,
+  );
+  return typeof value === "string" ? value : "";
+};
+
+const splitName = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || "",
+    lastName: parts.length > 1 ? parts.slice(1).join(" ") : "",
+  };
+};
+
+const toImageUrl = (value: string) => {
+  if (!value) return "";
+  if (/^(https?:|data:|blob:)/i.test(value)) return value;
+  if (!value.startsWith("/")) return value;
+
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+  try {
+    return `${new URL(apiBaseUrl).origin}${value}`;
+  } catch {
+    return value;
+  }
+};
+
+const normalizeDriverProfile = (driver: DriverDetail, routeId: string) => {
+  const personal = nestedRecord(driver, "personalInformation");
+  const address = nestedRecord(driver, "addressInformation");
+  const documents = nestedRecord(driver, "documentInformation");
+  const system = nestedRecord(driver, "systemInformation");
+  const compliance = nestedRecord(driver, "complianceStatus");
+  const user = nestedRecord(driver, "user");
+  const nameParts = splitName(pickText(driver.name, user.name));
+
+  const kycStatus = pickText(system.kycStatus, driver.kycStatus);
+  const accountStatus = pickText(system.accountStatus, driver.accountStatus);
+  const displayName = pickText(
+    driver.name,
+    user.name,
+    [nameParts.firstName, nameParts.lastName].filter(Boolean).join(" "),
+    "Driver",
+  );
+  const imageCandidate = pickText(
+    driver.avatar,
+    driver.profileImage,
+    driver.profilePhoto,
+    driver.image,
+    personal.avatar,
+    personal.profileImage,
+    user.avatar,
+    user.profileImage,
+  );
+
+  return {
+    profileImage:
+      toImageUrl(imageCandidate) ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(
+        displayName,
+      )}&background=E2E8F0&color=475569`,
+    personalInformation: {
+      firstName: pickText(personal.firstName, driver.firstName, nameParts.firstName),
+      middleName: pickText(personal.middleName, driver.middleName),
+      lastName: pickText(personal.lastName, driver.lastName, nameParts.lastName),
+      email: pickText(personal.email, driver.email, user.email),
+      phone: pickText(personal.phone, driver.phone, driver.phoneNumber, user.phone),
+      dob: pickText(personal.dob, driver.dob),
+    },
+    addressInformation: {
+      addressLine1: pickText(address.addressLine1, driver.addressLine1),
+      addressLine2: pickText(address.addressLine2, driver.addressLine2),
+      city: pickText(address.city, driver.city),
+      state: pickText(address.state, driver.state),
+      postalCode: pickText(address.postalCode, address.zipCode, driver.postalCode, driver.zipCode),
+      country: pickText(address.country, driver.country),
+    },
+    documentInformation: {
+      driverLicenceNumber: pickText(
+        documents.driverLicenceNumber,
+        driver.driverLicenceNumber,
+        driver.driversLicenceNumber,
+      ),
+      licenceExpiryDate: pickText(
+        documents.licenceExpiryDate,
+        documents.licenseExpiryDate,
+        driver.licenceExpiry,
+        driver.licenseExpiry,
+      ),
+      passportNumber: pickText(documents.passportNumber, driver.passportNumber),
+      visaExpiryDate: pickText(documents.visaExpiryDate, driver.visaExpiry),
+      abn: pickText(documents.abn, driver.abn),
+    },
+    systemInformation: {
+      driverId: pickText(system.driverId, driver.driverId, driver._id, routeId),
+      kycStatus,
+      accountStatus,
+      dateJoined: pickText(system.dateJoined, driver.createdAt),
+      lastLogin: pickText(system.lastLogin, driver.lastLoginAt, driver.lastLogin),
+      linkedPayment: pickText(system.linkedPayment, driver.linkedPayment),
+    },
+    complianceStatus: {
+      identityVerification: pickText(compliance.identityVerification, kycStatus),
+      addressVerification: pickText(compliance.addressVerification),
+      paymentSetup: pickText(compliance.paymentSetup, driver.paymentStatus),
+    },
+  };
+};
+
 export default function DriverProfilePage() {
-  const router = useRouter();
   const params = useParams();
-  const driverId = params?.id as string;
-  const [driver, setDriver] = useState<any>(null);
+  const searchParams = useSearchParams();
+  const driverId = String(params?.id || "");
+  const [driver, setDriver] = useState<DriverDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,8 +190,9 @@ export default function DriverProfilePage() {
       try {
         setLoading(true);
         const res = await driversApi.getDriverById(driverId);
-        if (res.success) {
-          setDriver(res.data);
+        const payload = getDriverPayload(res.data);
+        if (res.success && payload) {
+          setDriver(payload);
         }
       } catch (error) {
         console.error("Failed to fetch driver:", error);
@@ -55,24 +203,14 @@ export default function DriverProfilePage() {
     fetchDriver();
   }, [driverId]);
 
-  const [activeTab, setActiveTab] = useState<
-    | "Profile Details"
-    | "KYC Verification Queue"
-    | "Payments"
-    | "Driver Documents"
-    | "Agreements"
-    | "Audit & Activity"
-    | "Notes"
-  >("Profile Details");
+  const [activeTab, setActiveTab] = useState<DriverTab>("Profile Details");
 
-  const tabs = [
-    "Profile Details",
-    "KYC Verification Queue",
-    "Payments",
-    "Driver Documents",
-    "Agreements",
-    "Audit & Activity",
-  ];
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && (DRIVER_TABS as readonly string[]).includes(tab)) {
+      setActiveTab(tab as DriverTab);
+    }
+  }, [searchParams]);
 
   if (loading) {
     return (
@@ -102,7 +240,8 @@ export default function DriverProfilePage() {
     addressInformation,
     documentInformation,
     complianceStatus,
-  } = driver;
+    profileImage,
+  } = normalizeDriverProfile(driver, driverId);
 
   return (
     <div
@@ -188,10 +327,22 @@ export default function DriverProfilePage() {
                 height: "95px",
                 borderRadius: "50%",
                 background: COLORS.PRIMARY_LIGHT,
-                borderWidth: "2px",
-                borderColor: COLORS.PRIMARY_MAIN,
+                border: `2px solid ${COLORS.PRIMARY_LIGHT}`,
+                overflow: "hidden",
+                flexShrink: 0,
               }}
-            ></div>
+            >
+              <img
+                src={profileImage}
+                alt={`${personalInformation.firstName || "Driver"} profile`}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
+            </div>
             <div
               style={{
                 display: "flex",
@@ -259,7 +410,7 @@ export default function DriverProfilePage() {
             </div>
           </div>
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <Link href={`/drivers/1/edit`} style={{ textDecoration: "none" }}>
+            <Link href={`/drivers/${driverId}/edit`} style={{ textDecoration: "none" }}>
               <button
                 style={{
                   display: "flex",
@@ -326,20 +477,10 @@ export default function DriverProfilePage() {
           padding: "0 0.5rem",
         }}
       >
-        {tabs.map((tab) => (
+        {DRIVER_TABS.map((tab) => (
           <button
             key={tab}
-            onClick={() => {
-              setActiveTab(
-                tab as
-                  | "Profile Details"
-                  | "KYC Verification Queue"
-                  | "Payments"
-                  | "Agreements"
-                  | "Audit & Activity"
-                  | "Notes",
-              );
-            }}
+            onClick={() => setActiveTab(tab)}
             style={{
               padding: "0.75rem 0.25rem",
               fontSize: "0.85rem",
@@ -849,7 +990,7 @@ export default function DriverProfilePage() {
                         color: COLORS.TEXT_SECONDARY,
                       }}
                     >
-                      Driver's Licence
+                      Driver&apos;s Licence
                     </span>
                     <div
                       style={{
