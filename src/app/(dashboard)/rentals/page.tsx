@@ -161,19 +161,23 @@ export default function RentalsManagement() {
                 <input placeholder={label} style={inputStyle} value={(filters as any)[key]} onChange={(e) => setFilters(f => ({ ...f, [key]: e.target.value }))} />
               </div>
             ))}
-            <SelectField label="Rental Status" options={["All Status","Active","Upcoming","Completed","Cancelled","Disputed"].map(v=>({label:v,value:v}))} value={filters.rentalStatus} onChange={(e)=>setFilters(f=>({...f,rentalStatus:e.target.value}))} />
+            <SelectField label="Rental Status" options={["All Status", "Pending", "Pending Approval", "Active", "Upcoming", "Completed", "Cancelled", "Rejected", "Disputed"].map(v => ({ label: v, value: v }))} value={filters.rentalStatus} onChange={(e) => setFilters(f => ({ ...f, rentalStatus: e.target.value }))} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "0.75rem", marginTop: "1rem", alignItems: "center" }}>
-            <SelectField label="Agreement Type" options={["All Types","Short Term","Rent to own"].map(v=>({label:v,value:v}))} value={filters.agreementType} onChange={(e)=>setFilters(f=>({...f,agreementType:e.target.value}))} />
-            <SelectField label="Payment Status" options={["All Payments","Paid","Pending","Overdue","Failed"].map(v=>({label:v,value:v}))} value={filters.paymentStatus} onChange={(e)=>setFilters(f=>({...f,paymentStatus:e.target.value}))} />
-            <SelectField label="Return Status" options={["All Returns","Returned","Not Returned","Overdue"].map(v=>({label:v,value:v}))} value={filters.returnStatus} onChange={(e)=>setFilters(f=>({...f,returnStatus:e.target.value}))} />
+            <SelectField
+              label="Agreement Type" 
+              options={["All Types", "Short Term", "Rent to own"].map(v => ({ label: v, value: v }))} 
+              value={filters.agreementType} 
+              onChange={(e) => setFilters(f => ({ ...f, agreementType: e.target.value }))} />
+            <SelectField label="Payment Status" options={["All Payments", "Paid", "Pending", "Overdue", "Failed"].map(v => ({ label: v, value: v }))} value={filters.paymentStatus} onChange={(e) => setFilters(f => ({ ...f, paymentStatus: e.target.value }))} />
+            <SelectField label="Return Status" options={["All Returns", "Returned", "Not Returned", "Overdue"].map(v => ({ label: v, value: v }))} value={filters.returnStatus} onChange={(e) => setFilters(f => ({ ...f, returnStatus: e.target.value }))} />
             <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
               <label style={labelStyle}>Start Date</label>
-              <input type="date" style={inputStyle} value={filters.startDate} onChange={(e)=>setFilters(f=>({...f,startDate:e.target.value}))} />
+              <input type="date" style={inputStyle} value={filters.startDate} onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
               <label style={labelStyle}>End Date</label>
-              <input type="date" style={inputStyle} value={filters.endDate} onChange={(e)=>setFilters(f=>({...f,endDate:e.target.value}))} />
+              <input type="date" style={inputStyle} value={filters.endDate} onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))} />
             </div>
             <button
               onClick={() => fetchRentals(1)}
@@ -191,13 +195,13 @@ export default function RentalsManagement() {
           </div>
           {loading ? (
             <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-              {[1,2,3,4,5].map(i=><Shimmer key={i} />)}
+              {[1, 2, 3, 4, 5].map(i => <Shimmer key={i} />)}
             </div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#F9FAFB", borderBottom: "1px solid #E5E7EB", textAlign: "left", fontSize: "0.75rem", fontWeight: 600, color: "#6B7280" }}>
-                  {["RENTAL ID","VEHICLE","REGISTRATION","DRIVER","OWNER","AGREEMENT TYPE","START DATE","END DATE","RENTAL STATUS","PAYMENT STATUS"].map(h=>(
+                  {["RENTAL ID", "VEHICLE", "REGISTRATION", "DRIVER", "OWNER", "AGREEMENT TYPE", "START DATE", "END DATE", "RENTAL STATUS", "PAYMENT STATUS"].map(h => (
                     <th key={h} style={{ padding: "1rem 1.5rem" }}>{h}</th>
                   ))}
                 </tr>
@@ -225,14 +229,14 @@ export default function RentalsManagement() {
           {/* Pagination */}
           <div style={{ padding: "1rem 1.5rem", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #E5E7EB" }}>
             <p style={{ fontSize: "0.85rem", color: COLORS.TEXT_SECONDARY }}>
-              Showing {Math.min((page-1)*25+1,total)}–{Math.min(page*25,total)} of {total.toLocaleString()} entries
+              Showing {Math.min((page - 1) * 25 + 1, total)}–{Math.min(page * 25, total)} of {total.toLocaleString()} entries
             </p>
             <div style={{ display: "flex", gap: "0.5rem" }}>
-              <button disabled={page<=1} onClick={()=>fetchRentals(page-1)} style={{ padding:"8px 12px",borderRadius:"6px",border:`1px solid ${COLORS.BORDER_MAIN}`,background:COLORS.BG_CARD,fontSize:"0.85rem",fontWeight:600,cursor:page<=1?"not-allowed":"pointer",opacity:page<=1?0.5:1 }}>Previous</button>
-              {Array.from({length:Math.min(pages,5)},(_,i)=>i+1).map(p=>(
-                <button key={p} onClick={()=>fetchRentals(p)} style={{ padding:"8px 12px",borderRadius:"6px",border:`1px solid ${COLORS.BORDER_MAIN}`,background:p===page?COLORS.PRIMARY_MAIN:COLORS.BG_CARD,color:p===page?COLORS.BG_CARD:COLORS.TEXT_SECONDARY,fontSize:"0.85rem",fontWeight:600,cursor:"pointer" }}>{p}</button>
+              <button disabled={page <= 1} onClick={() => fetchRentals(page - 1)} style={{ padding: "8px 12px", borderRadius: "6px", border: `1px solid ${COLORS.BORDER_MAIN}`, background: COLORS.BG_CARD, fontSize: "0.85rem", fontWeight: 600, cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.5 : 1 }}>Previous</button>
+              {Array.from({ length: Math.min(pages, 5) }, (_, i) => i + 1).map(p => (
+                <button key={p} onClick={() => fetchRentals(p)} style={{ padding: "8px 12px", borderRadius: "6px", border: `1px solid ${COLORS.BORDER_MAIN}`, background: p === page ? COLORS.PRIMARY_MAIN : COLORS.BG_CARD, color: p === page ? COLORS.BG_CARD : COLORS.TEXT_SECONDARY, fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}>{p}</button>
               ))}
-              <button disabled={page>=pages} onClick={()=>fetchRentals(page+1)} style={{ padding:"8px 12px",borderRadius:"6px",border:`1px solid ${COLORS.BORDER_MAIN}`,background:COLORS.BG_CARD,fontSize:"0.85rem",fontWeight:600,cursor:page>=pages?"not-allowed":"pointer",opacity:page>=pages?0.5:1 }}>Next</button>
+              <button disabled={page >= pages} onClick={() => fetchRentals(page + 1)} style={{ padding: "8px 12px", borderRadius: "6px", border: `1px solid ${COLORS.BORDER_MAIN}`, background: COLORS.BG_CARD, fontSize: "0.85rem", fontWeight: 600, cursor: page >= pages ? "not-allowed" : "pointer", opacity: page >= pages ? 0.5 : 1 }}>Next</button>
             </div>
           </div>
         </Card>

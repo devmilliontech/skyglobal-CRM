@@ -34,6 +34,22 @@ export interface UserStats {
   };
 }
 
+type RawUserStats = {
+  totalUsers?: number;
+  activeUsers?: number;
+  suspendedUsers?: number;
+  roleDistribution?: Record<string, number>;
+};
+
+type RawUserRecord = Partial<User> & Record<string, unknown>;
+
+type UsersApiPayload = {
+  stats?: RawUserStats;
+  users?: RawUserRecord[];
+  data?: RawUserRecord[];
+  pagination?: unknown;
+} & Record<string, unknown>;
+
 const mapRoleDistribution = (
   roleDistribution: Record<string, number> = {},
 ) => ({
@@ -50,7 +66,7 @@ export interface UsersFilters {
   status?: string;
 }
 
-const getUserAvatar = (user: Record<string, any>) =>
+const getUserAvatar = (user: RawUserRecord) =>
   user.avatar ||
   user.profileImage ||
   user.driverProfile?.avatar ||
@@ -59,11 +75,12 @@ const getUserAvatar = (user: Record<string, any>) =>
   user.ownerProfile?.profileImage ||
   "";
 
-const mapUser = (user: Record<string, any>) => {
+const mapUser = (user: RawUserRecord): User => {
   const avatar = getUserAvatar(user);
 
   return {
     ...user,
+    _id: user._id || "",
     avatar,
     profileImage: user.profileImage || avatar,
   };
@@ -80,23 +97,23 @@ export const usersApi = {
       if (v !== undefined && v !== "") params.set(k, String(v));
     });
     const qs = params.toString();
-    const res = await apiFetch<ApiResponse<any>>(
+    const res = await apiFetch<ApiResponse<UsersApiPayload>>(
       `/admin/users${qs ? `?${qs}` : ""}`,
     );
 
-    const stats = res.data?.stats || {};
+    const stats: RawUserStats = res.data?.stats || {};
     const mappedStats: UserStats = {
       totalUsers: stats.totalUsers ?? 0,
       activeUsers: stats.activeUsers ?? 0,
       suspendedUsers: stats.suspendedUsers ?? 0,
       roleDistribution: mapRoleDistribution(stats.roleDistribution),
     };
-    const users = Array.isArray(res.data?.users)
-      ? res.data.users.map(mapUser)
-      : [];
     const dataRows = Array.isArray(res.data?.data)
       ? res.data.data.map(mapUser)
       : undefined;
+    const users =
+      dataRows ??
+      (Array.isArray(res.data?.users) ? res.data.users.map(mapUser) : []);
 
     return {
       ...res,
@@ -106,7 +123,7 @@ export const usersApi = {
         users,
         ...(dataRows ? { data: dataRows } : {}),
       },
-    } as ApiResponse<{ stats: UserStats; users: User[]; pagination: any }>;
+    } as ApiResponse<{ stats: UserStats; users: User[]; pagination: unknown }>;
   },
 
   /**
@@ -114,8 +131,8 @@ export const usersApi = {
    * Fetch user statistics only
    */
   getUserStats: async () => {
-    const res = await apiFetch<ApiResponse<any>>(`/admin/users/stats`);
-    const stats = res.data || {};
+    const res = await apiFetch<ApiResponse<RawUserStats>>(`/admin/users/stats`);
+    const stats: RawUserStats = res.data || {};
     return {
       ...res,
       data: {
@@ -132,7 +149,9 @@ export const usersApi = {
    * Fetch a single user by ID
    */
   getUserById: async (userId: string) => {
-    const res = await apiFetch<ApiResponse<any>>(`/admin/users/${userId}`);
+    const res = await apiFetch<ApiResponse<RawUserRecord>>(
+      `/admin/users/${userId}`,
+    );
     return {
       ...res,
       data: mapUser(res.data || {}),

@@ -9,10 +9,27 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
   let color = "#6B7280";
   let bg = "#F3F4F6";
 
-  const lowerStatus = status.toLowerCase();
+  const lowerStatus = String(status || "").toLowerCase();
 
   // Map out common status colors based on keywords
   if (
+    lowerStatus.includes("cancelled") ||
+    lowerStatus.includes("canceled") ||
+    lowerStatus.includes("late") ||
+    lowerStatus.includes("rejected") ||
+    lowerStatus.includes("unpaid") ||
+    lowerStatus.includes("failed") ||
+    lowerStatus.includes("escalated") ||
+    lowerStatus.includes("not returned") ||
+    lowerStatus.includes("needs repair") ||
+    lowerStatus.includes("expired") ||
+    lowerStatus.includes("overdue") ||
+    lowerStatus.includes("blocked") ||
+    lowerStatus.includes("inactive")
+  ) {
+    color = "#fff"; // Red
+    bg = "#f42f2fff";
+  } else if (
     lowerStatus.includes("paid") ||
     lowerStatus.includes("on time") ||
     lowerStatus.includes("active") ||
@@ -28,7 +45,6 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
     bg = COLORS.SUCCESS_LIGHT;
   } else if (
     lowerStatus.includes("pending") ||
-    lowerStatus.includes("scheduled") ||
     lowerStatus.includes("open") ||
     lowerStatus.includes("partial") ||
     lowerStatus.includes("maintenance") ||
@@ -38,26 +54,18 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
     color = "#fff"; // Amber/Yellow
     bg = "#f59e0b";
   } else if (
-    lowerStatus.includes("cancelled") ||
-    lowerStatus.includes("late") ||
-    lowerStatus.includes("rejected") ||
-    lowerStatus.includes("unpaid") ||
-    lowerStatus.includes("failed") ||
-    lowerStatus.includes("escalated") ||
-    lowerStatus.includes("not returned") ||
-    lowerStatus.includes("needs repair") ||
-    lowerStatus.includes("expired") ||
-    lowerStatus.includes("currently rented") ||
-    lowerStatus.includes("expiring")
+    lowerStatus.includes("currently rented")
   ) {
-    color = "#fff"; // Red
+    color = "#fff";
     bg = "#f42f2fff";
   } else if (
+    lowerStatus.includes("upcoming") ||
+    lowerStatus.includes("scheduled") ||
     lowerStatus.includes("refunded") ||
     lowerStatus.includes("review") ||
     lowerStatus.includes("in rental") ||
     lowerStatus.includes("good") ||
-    lowerStatus.includes("active") ||
+    lowerStatus.includes("short term") ||
     lowerStatus.includes("short-term")
   ) {
     color = COLORS.PRIMARY_MAIN; // Blue

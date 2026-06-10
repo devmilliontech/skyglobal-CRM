@@ -1,9 +1,13 @@
+const LOCAL_API_BASE_URL = "http://localhost:5000/api/v1";
+
 const resolveBaseUrl = () => {
-  const envBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (envBase && envBase.trim()) {
-    return envBase.replace(/\/$/, "");
+  const envBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim().replace(/\/$/, "");
+
+  if (envBase) {
+    return envBase;
   }
-  return "http://localhost:5000/api/v1";
+
+  return LOCAL_API_BASE_URL;
 };
 
 const API_BASE_URL = resolveBaseUrl();
@@ -63,7 +67,7 @@ export const apiFetch = async <T>(
   });
 
   // Handle 401/403 — redirect to login
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     console.error(`[API] ${response.status} — redirecting to login`);
     if (typeof window !== "undefined") {
       // Clear stale tokens
@@ -99,7 +103,7 @@ export const apiDownload = async (path: string): Promise<Blob> => {
 
   const response = await fetch(url, { credentials: "include", headers });
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("admin_token");
       localStorage.removeItem("token");
@@ -133,7 +137,7 @@ export const apiDownloadPost = async (path: string, body: unknown): Promise<Blob
     headers,
   });
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("admin_token");
       localStorage.removeItem("token");

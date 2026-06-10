@@ -58,10 +58,25 @@ export default function VehicleDetails() {
   }, [fetchVehicle, vehicleId]);
 
   const updateStatus = async (newStatus: "Approved" | "Rejected" | "Inactive") => {
+    const reason =
+      newStatus === "Rejected"
+        ? window.prompt("Reason for rejecting this vehicle listing")
+        : newStatus === "Inactive"
+          ? window.prompt("Reason for disabling this vehicle listing")
+          : "Approved from admin vehicle detail page";
+
+    if ((newStatus === "Rejected" || newStatus === "Inactive") && reason === null) {
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
-      await vehiclesApi.updateListingStatus(vehicleId, newStatus, `Updated from admin vehicle detail page`);
+      await vehiclesApi.updateListingStatus(
+        vehicleId,
+        newStatus,
+        reason || `Updated from admin vehicle detail page`,
+      );
       await fetchVehicle();
     } catch (err: any) {
       setError(err.message || "Failed to update listing status");
@@ -172,7 +187,6 @@ export default function VehicleDetails() {
                   <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
                     <StatusBadge status={vehicle.listingStatus || "Unknown"} />
                     <StatusBadge status={vehicle.rentalStatus || "Unknown"} />
-                    <StatusBadge status={vehicle.isAvailable ? "Available" : "Unavailable"} />
                   </div>
                 </div>
               </div>
@@ -181,16 +195,22 @@ export default function VehicleDetails() {
                 {vehicle.listingStatus !== "Approved" && (
                   <Button variant="success" disabled={saving} onClick={() => updateStatus("Approved")}>
                     <CheckCircle2 size={18} />
-                    Approve
+                    {saving ? "Updating..." : "Approve"}
+                  </Button>
+                )}
+                {vehicle.listingStatus !== "Rejected" && (
+                  <Button variant="danger" disabled={saving} onClick={() => updateStatus("Rejected")}>
+                    <Ban size={18} />
+                    {saving ? "Updating..." : "Reject"}
                   </Button>
                 )}
                 <Button variant="outline" onClick={() => router.push(`/vehicles/${vehicleId}/edit`)}>
                   <Edit3 size={18} />
                   Edit
                 </Button>
-                <Button variant="outline" disabled={saving} style={{ color: COLORS.ERROR_MAIN, borderColor: "#FCA5A5" }} onClick={() => updateStatus("Inactive")}>
+                <Button variant="outline" disabled={saving} style={{ color: COLORS.ERROR_MAIN, border: "1px solid #FCA5A5" }} onClick={() => updateStatus("Inactive")}>
                   <Ban size={18} />
-                  Disable
+                  {saving ? "Updating..." : "Disable"}
                 </Button>
               </div>
             </div>

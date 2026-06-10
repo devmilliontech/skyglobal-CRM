@@ -4,7 +4,9 @@ type ApiResponse<T> = { success: boolean; data: T; message?: string };
 
 export interface Rental {
   _id: string;
+  bookingId?: string;
   rentalId?: string;
+  source?: string;
   vehicleName?: string;
   vehicleRegistration?: string;
   driverName?: string;
@@ -15,6 +17,128 @@ export interface Rental {
   rentalStatus?: string;
   paymentStatus?: string;
   createdAt?: string;
+}
+
+export interface RentalDetail extends Rental {
+  rentalAmount?: number;
+  deposit?: number;
+  deliveryFee?: number;
+  totalPaid?: number;
+  outstandingBalance?: number;
+  lateReturnFee?: number;
+  pricing?: Record<string, any>;
+  fareBreakdown?: {
+    totalDays?: number;
+    regularDays?: number;
+    weekendDays?: number;
+    holidayDays?: number;
+    weekendPricingIncluded?: boolean;
+    holidayPricingIncluded?: boolean;
+    lines?: Array<{
+      key?: string;
+      type?: string;
+      label?: string;
+      quantity?: number;
+      days?: number;
+      rate?: number;
+      amount?: number;
+      dates?: string[];
+    }>;
+    days?: Array<Record<string, any>>;
+    rates?: Record<string, number>;
+  } | null;
+  durationDays?: number;
+  mileageStart?: number;
+  returnStatus?: string;
+  checkInCondition?: { date?: string | null; notes?: string };
+  checkOutCondition?: { date?: string | null; notes?: string };
+  vehicleInfo?: {
+    id?: string;
+    name?: string;
+    make?: string;
+    model?: string;
+    year?: string;
+    registration?: string;
+    vin?: string;
+    odometer?: string | number;
+    insuranceStatus?: string;
+    insuranceProvider?: string;
+    insuranceExpiry?: string;
+    registrationExpiry?: string;
+    dailyRate?: number;
+    weeklyRate?: number;
+    lateFee?: number;
+  };
+  driverInfo?: {
+    id?: string;
+    driverId?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    license?: string;
+    kycStatus?: string;
+    avatar?: string;
+  };
+  ownerInfo?: {
+    id?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    businessName?: string;
+    status?: string;
+  };
+  agreement?: {
+    id?: string;
+    agreementId?: string;
+    title?: string;
+    type?: string;
+    status?: string;
+  } | null;
+  booking?: Record<string, any>;
+}
+
+export interface RentalTimelineItem {
+  id?: string;
+  label?: string;
+  amount?: number;
+  status?: string;
+  dueDate?: string;
+  paidDate?: string | null;
+  transactionId?: string;
+}
+
+export interface RentalHistoryItem {
+  id?: string;
+  title?: string;
+  description?: string;
+  createdAt?: string;
+  actorName?: string;
+  type?: string;
+}
+
+export interface RentalDetailResponse {
+  rental: RentalDetail;
+  paymentTimeline: RentalTimelineItem[];
+  adminHistory: RentalHistoryItem[];
+  disputeLog: RentalHistoryItem[];
+}
+
+export type RentalAction =
+  | "mark-returned"
+  | "request-extension"
+  | "send-reminder"
+  | "add-note"
+  | "initiate-refund"
+  | "escalate-dispute"
+  | "add-dispute";
+
+export interface RentalActionResponse {
+  action: {
+    type: RentalAction;
+    status: string;
+    message: string;
+  };
+  detail: RentalDetailResponse;
 }
 
 export interface RentalStats {
@@ -103,29 +227,45 @@ export const rentalsApi = {
 
     const payload = res.data || {};
     const pagination = payload.pagination || {};
-    const rentals = (payload.rentals || payload.data || []).map((r: any) => ({
-      _id: r._id || r.id || r.rentalId,
-      rentalId: r.rentalId || r.rentalIdDisplay || r.id,
-      vehicleName: r.vehicleName || r.vehicle || r.vehicle?.name,
-      vehicleRegistration:
-        r.vehicleRegistration || r.registration || r.vehicle?.registration,
-      driverName: r.driverName || r.driver || r.currentDriver?.name,
-      ownerName: r.ownerName || r.owner || r.owner?.name,
-      agreementType: r.agreementType || r.currentAgreement?.type,
-      startDate: r.startDate || r.startDateTime,
-      endDate: r.endDate || r.endDateTime,
-      rentalStatus: r.rentalStatus || r.status,
-      paymentStatus: r.paymentStatus,
-      createdAt: r.createdAt,
-    }));
+    const rentals = (payload.rentals || payload.data || []).map((r: any) => {
+      const vehicleName =
+        r.vehicleName || r.vehicle?.name || r.vehicle?.make || r.vehicle;
+      const driverName =
+        r.driverName || r.driver?.name || r.currentDriver?.name || r.driver;
+      const ownerName =
+        r.ownerName ||
+        r.owner?.name ||
+        r.owner?.fullName ||
+        r.owner?.businessName ||
+        r.owner?.email ||
+        r.owner;
+
+      return {
+        _id: r._id || r.id || r.bookingId || r.rentalId,
+        bookingId: r.bookingId,
+        rentalId: r.rentalId || r.rentalIdDisplay || r.bookingId || r.id,
+        source: r.source || r.sourceType,
+        vehicleName: typeof vehicleName === "string" ? vehicleName : undefined,
+        vehicleRegistration:
+          r.vehicleRegistration || r.registration || r.vehicle?.registration,
+        driverName: typeof driverName === "string" ? driverName : undefined,
+        ownerName: typeof ownerName === "string" ? ownerName : undefined,
+        agreementType: r.agreementType || r.currentAgreement?.type,
+        startDate: r.startDate || r.startDateTime,
+        endDate: r.endDate || r.endDateTime,
+        rentalStatus: r.rentalStatus || r.status,
+        paymentStatus: r.paymentStatus,
+        createdAt: r.createdAt,
+      };
+    });
 
     return {
       ...res,
       data: {
         rentals,
-        total: pagination.total ?? payload.total ?? 0,
-        page: pagination.page ?? payload.page ?? 1,
-        pages: pagination.pages ?? payload.pages ?? 1,
+        total: pagination.total ?? pagination.totalDocuments ?? payload.total ?? 0,
+        page: pagination.page ?? pagination.currentPage ?? payload.page ?? 1,
+        pages: pagination.pages ?? pagination.totalPages ?? payload.pages ?? 1,
         stats: mapRentalStats(payload.stats),
       },
     } as ApiResponse<{
@@ -138,7 +278,35 @@ export const rentalsApi = {
   },
 
   getRentalById: async (id: string) =>
-    apiFetch<ApiResponse<Rental>>(`/admin/rentals/${id}`),
+    apiFetch<ApiResponse<RentalDetailResponse>>(`/admin/rentals/${id}`),
+
+  updateRentalStatus: async (
+    id: string,
+    data: { status: string; actionNote?: string },
+  ) =>
+    apiFetch<ApiResponse<Rental>>(`/admin/rentals/${id}/status`, {
+      method: "PATCH",
+      body: data,
+    }),
+
+  performRentalAction: async (
+    id: string,
+    action: RentalAction,
+    data: Record<string, unknown> = {},
+  ) =>
+    apiFetch<ApiResponse<RentalActionResponse>>(
+      `/admin/rentals/${id}/actions/${action}`,
+      {
+        method: "POST",
+        body: data,
+      },
+    ),
+
+  addRentalDisputeEntry: async (id: string, content: string) =>
+    apiFetch<ApiResponse<RentalHistoryItem>>(`/admin/rentals/${id}/disputes`, {
+      method: "POST",
+      body: { content },
+    }),
 
   getRentalStats: async () => {
     const res = await apiFetch<ApiResponse<any>>("/admin/rentals?limit=1");

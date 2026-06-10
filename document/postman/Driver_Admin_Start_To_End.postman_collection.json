@@ -1,0 +1,646 @@
+{
+  "info": {
+    "_postman_id": "f1b7e1f8-4b30-4d36-8d5e-driver-admin-flow",
+    "name": "iRent Admin - Driver Flow Start To End",
+    "description": "Postman collection for the admin driver module used by the admin frontend. Run Login first, then run the driver requests in order.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://skyglobal-server.onrender.com/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "adminEmail",
+      "value": "admin@example.com",
+      "type": "string"
+    },
+    {
+      "key": "adminPassword",
+      "value": "password",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driverId",
+      "value": "6a279251de01546cb1d641ec",
+      "type": "string"
+    },
+    {
+      "key": "documentId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 - Auth",
+      "item": [
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login success', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "const token = json?.data?.token || json?.token || json?.accessToken;",
+                  "if (token) {",
+                  "  pm.collectionVariables.set('adminToken', token);",
+                  "  pm.environment.set('adminToken', token);",
+                  "}",
+                  "pm.test('Token saved', function () {",
+                  "  pm.expect(token, 'token').to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Use the same admin login endpoint as the frontend signin page. The test script stores data.token into adminToken."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - Driver List And Profile",
+      "item": [
+        {
+          "name": "Get Driver Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers?limit=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Frontend uses this to get driver stats. Expected data.stats includes totalDrivers, activeDrivers, suspended, pendingVerification, overduePayments, expiringLicence, expiringVisa."
+          }
+        },
+        {
+          "name": "List Drivers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "const first = json?.data?.drivers?.[0] || json?.drivers?.[0];",
+                  "if (first?._id || first?.driverId || first?.id) {",
+                  "  pm.collectionVariables.set('driverId', first._id || first.driverId || first.id);",
+                  "  pm.environment.set('driverId', first._id || first.driverId || first.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers?page=1&limit=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "25"
+                }
+              ]
+            },
+            "description": "Lists drivers for /drivers table. Test script stores the first returned driver id into driverId."
+          }
+        },
+        {
+          "name": "Search Drivers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers?page=1&limit=25&search=David&status=Active&kycStatus=Pending",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "25"
+                },
+                {
+                  "key": "search",
+                  "value": "David"
+                },
+                {
+                  "key": "status",
+                  "value": "Active"
+                },
+                {
+                  "key": "kycStatus",
+                  "value": "Pending"
+                }
+              ]
+            },
+            "description": "Same filters used by the frontend: search, status, kycStatus, agreementStatus, paymentStatus."
+          }
+        },
+        {
+          "name": "Get Driver Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverId}}"
+              ]
+            },
+            "description": "Used by /drivers/:id and /drivers/:id/edit. Frontend supports either data: driver or data: { driver }."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Create And Update Driver",
+      "item": [
+        {
+          "name": "Create Driver Account",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "firstName",
+                  "value": "Postman",
+                  "type": "text"
+                },
+                {
+                  "key": "middleName",
+                  "value": "QA",
+                  "type": "text"
+                },
+                {
+                  "key": "lastName",
+                  "value": "Driver",
+                  "type": "text"
+                },
+                {
+                  "key": "dob",
+                  "value": "1990-06-09",
+                  "type": "text"
+                },
+                {
+                  "key": "email",
+                  "value": "postman.driver+{{$timestamp}}@example.com",
+                  "type": "text"
+                },
+                {
+                  "key": "phone",
+                  "value": "+61401234578",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "Driver@123!",
+                  "type": "text"
+                },
+                {
+                  "key": "addressLine1",
+                  "value": "123 Test Street",
+                  "type": "text"
+                },
+                {
+                  "key": "addressLine2",
+                  "value": "Unit 1",
+                  "type": "text"
+                },
+                {
+                  "key": "driverLicenceNumber",
+                  "value": "DL-POSTMAN-001",
+                  "type": "text"
+                },
+                {
+                  "key": "licenceExpiry",
+                  "value": "2027-12-31",
+                  "type": "text"
+                },
+                {
+                  "key": "passportNumber",
+                  "value": "P1234567",
+                  "type": "text"
+                },
+                {
+                  "key": "visaExpiry",
+                  "value": "2027-12-31",
+                  "type": "text"
+                },
+                {
+                  "key": "abn",
+                  "value": "12 345 678 901",
+                  "type": "text"
+                },
+                {
+                  "key": "accountStatus",
+                  "value": "Pending",
+                  "type": "text"
+                },
+                {
+                  "key": "kycStatus",
+                  "value": "Pending",
+                  "type": "text"
+                },
+                {
+                  "key": "licenceFront",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "licenceBack",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "passport",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "proofOfAddress",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers"
+              ]
+            },
+            "description": "Multipart create request matching the Add Driver frontend page. File fields are optional unless backend validation requires them."
+          }
+        },
+        {
+          "name": "Update Driver Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"David\",\n  \"middleName\": \"\",\n  \"lastName\": \"\",\n  \"name\": \"David\",\n  \"email\": \"david2@millionhits.com.au\",\n  \"phone\": \"0401234578\",\n  \"phoneNumber\": \"0401234578\",\n  \"dob\": \"1990-06-09\",\n  \"addressLine1\": \"123 Test Street\",\n  \"addressLine2\": \"Unit 1\",\n  \"city\": \"Melbourne\",\n  \"state\": \"Victoria\",\n  \"postalCode\": \"3000\",\n  \"zipCode\": \"3000\",\n  \"country\": \"Australia\",\n  \"driverLicenceNumber\": \"DL-POSTMAN-001\",\n  \"licenceExpiry\": \"2027-12-31\",\n  \"passportNumber\": \"P1234567\",\n  \"visaExpiry\": \"2027-12-31\",\n  \"abn\": \"12 345 678 901\",\n  \"accountStatus\": \"Active\",\n  \"kycStatus\": \"Pending\",\n  \"reasonForChange\": \"Postman profile update test\",\n  \"personalInformation\": {\n    \"firstName\": \"David\",\n    \"middleName\": \"\",\n    \"lastName\": \"\",\n    \"email\": \"david2@millionhits.com.au\",\n    \"phone\": \"0401234578\",\n    \"dob\": \"1990-06-09\"\n  },\n  \"addressInformation\": {\n    \"addressLine1\": \"123 Test Street\",\n    \"addressLine2\": \"Unit 1\",\n    \"city\": \"Melbourne\",\n    \"state\": \"Victoria\",\n    \"postalCode\": \"3000\",\n    \"country\": \"Australia\"\n  },\n  \"documentInformation\": {\n    \"driverLicenceNumber\": \"DL-POSTMAN-001\",\n    \"licenceExpiryDate\": \"2027-12-31\",\n    \"passportNumber\": \"P1234567\",\n    \"visaExpiryDate\": \"2027-12-31\",\n    \"abn\": \"12 345 678 901\"\n  },\n  \"systemInformation\": {\n    \"accountStatus\": \"Active\",\n    \"kycStatus\": \"Pending\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverId}}"
+              ]
+            },
+            "description": "Used by /drivers/:id/edit Save Changes. Backend should save the changed fields and log reasonForChange into edit history."
+          }
+        },
+        {
+          "name": "Get Driver Edit History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/edit-history?page=1&limit=25",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverId}}",
+                "edit-history"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "25"
+                }
+              ]
+            },
+            "description": "Recommended endpoint for View Edit History. If backend has not implemented it yet, this should return 404 until added."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Documents And KYC",
+      "item": [
+        {
+          "name": "Get Driver Documents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "const firstDoc = json?.data?.documents?.[0];",
+                  "if (firstDoc?.id || firstDoc?._id) {",
+                  "  pm.collectionVariables.set('documentId', firstDoc.id || firstDoc._id);",
+                  "  pm.environment.set('documentId', firstDoc.id || firstDoc._id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverId}}",
+                "documents"
+              ]
+            },
+            "description": "Used by Driver Documents tab. Expected data: { documents, internalNotes, summary }."
+          }
+        },
+        {
+          "name": "Approve Driver Document",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Approved\",\n  \"reason\": \"Verified in Postman\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/documents/{{documentId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverId}}",
+                "documents",
+                "{{documentId}}",
+                "status"
+              ]
+            },
+            "description": "Updates one driver document status. Use status Approved, Rejected, Pending, or whatever enum backend supports."
+          }
+        },
+        {
+          "name": "Reject Driver Document",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Rejected\",\n  \"reason\": \"Document is blurry\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/documents/{{documentId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverId}}",
+                "documents",
+                "{{documentId}}",
+                "status"
+              ]
+            },
+            "description": "Rejects one driver document with reason."
+          }
+        },
+        {
+          "name": "Add Driver Internal Note",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Postman note: contacted driver about document renewal.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/drivers/{{driverId}}/notes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "drivers",
+                "{{driverId}}",
+                "notes"
+              ]
+            },
+            "description": "Adds an internal admin note for a driver."
+          }
+        },
+        {
+          "name": "Get KYC Queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/kyc/queue?page=1&limit=25&status=Pending",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "kyc",
+                "queue"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "25"
+                },
+                {
+                  "key": "status",
+                  "value": "Pending"
+                }
+              ]
+            },
+            "description": "Used by KYC queue. Change status to All/Approved/Rejected/Pending if backend supports those values."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Export",
+      "item": [
+        {
+          "name": "Export Drivers CSV",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"format\": \"csv\",\n  \"fields\": [\n    \"driverId\",\n    \"name\",\n    \"email\",\n    \"phone\",\n    \"kycStatus\",\n    \"accountStatus\",\n    \"createdAt\"\n  ],\n  \"filters\": {\n    \"status\": \"All Status\",\n    \"kycStatus\": \"All KYC\",\n    \"paymentStatus\": \"All Payments\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/export/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "export",
+                "drivers"
+              ]
+            },
+            "description": "Downloads CSV/Excel/PDF depending on backend support. In Postman, use Send and Download if response is a file."
+          }
+        },
+        {
+          "name": "Get Export History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/export/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "export",
+                "history"
+              ]
+            },
+            "description": "Returns previous export jobs/history."
+          }
+        }
+      ]
+    }
+  ]
+}

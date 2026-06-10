@@ -206,11 +206,13 @@ const usersDataFallback = [
   },
 ];
 
-const USERS_PAGE_LIMIT = 10;
+const USERS_PAGE_LIMIT = 5;
+const USERS_FETCH_LIMIT = 1000;
 
 const normalizePagination = (
   payload: UsersPaginationPayload,
   fallbackPage: number,
+  fallbackTotal = 0,
 ) => {
   const pagination = payload?.pagination || {};
   const total =
@@ -218,22 +220,14 @@ const normalizePagination = (
     pagination.totalDocuments ??
     pagination.totalUsers ??
     payload?.total ??
-    0;
-  const page =
-    pagination.page ??
-    pagination.currentPage ??
-    payload?.page ??
-    fallbackPage;
-  const pages =
-    pagination.pages ??
-    pagination.totalPages ??
-    payload?.pages ??
-    Math.max(1, Math.ceil(total / USERS_PAGE_LIMIT));
+    fallbackTotal;
+  const pages = Math.max(1, Math.ceil(total / USERS_PAGE_LIMIT));
+  const page = Math.min(Math.max(1, fallbackPage), pages);
 
   return {
     total,
     page,
-    pages: Math.max(1, pages || 1),
+    pages,
   };
 };
 
@@ -300,18 +294,23 @@ export default function UserManagementPage() {
       setIsLoading(true);
       setError(null);
       const response = await usersApi.getUsers({
-        page: currentPage,
-        limit: USERS_PAGE_LIMIT,
+        page: 1,
+        limit: USERS_FETCH_LIMIT,
         search: search.trim() || undefined,
         role: roleFilter === "all" ? undefined : roleFilter,
         status: statusFilter === "all" ? undefined : statusFilter,
       });
       if (response?.data) {
         const payload = response.data as UsersPaginationPayload;
-        const users = payload.users ?? payload.data ?? [];
-        const pagination = normalizePagination(payload, currentPage);
+        const users = payload.data ?? payload.users ?? [];
+        const normalizedUsers = users.map(normalizeUser);
+        const pagination = normalizePagination(
+          payload,
+          currentPage,
+          normalizedUsers.length,
+        );
         setStatsData(payload.stats ?? null);
-        setUsersData(users.map(normalizeUser));
+        setUsersData(normalizedUsers);
         setTotal(pagination.total);
         setPage(pagination.page);
         setPages(pagination.pages);
@@ -320,7 +319,8 @@ export default function UserManagementPage() {
       setError(err instanceof Error ? err.message : "Failed to load users data");
       setUsersData((current) => current.length ? current : (usersDataFallback as unknown as UserRow[]));
       setTotal((current) => current || usersDataFallback.length);
-      setPages((current) => current || 1);
+      setPage(1);
+      setPages(Math.max(1, Math.ceil(usersDataFallback.length / USERS_PAGE_LIMIT)));
     } finally {
       setIsLoading(false);
     }
@@ -341,6 +341,17 @@ export default function UserManagementPage() {
 
   const router = useRouter();
   const visiblePages = getVisiblePages(page, pages);
+  const paginatedUsersData = usersData.slice(
+    (page - 1) * USERS_PAGE_LIMIT,
+    page * USERS_PAGE_LIMIT,
+  );
+
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > pages || nextPage === page || isLoading) {
+      return;
+    }
+    setPage(nextPage);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
@@ -668,7 +679,7 @@ export default function UserManagementPage() {
                   </td>
                 </tr>
               ) : (
-                usersData.map((user, index) => (
+                paginatedUsersData.map((user, index) => (
                   <tr
                     key={user.id || user._id || index}
                     style={{ borderBottom: `1px solid ${COLORS.BORDER_MAIN}` }}
@@ -813,7 +824,7 @@ export default function UserManagementPage() {
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             <button
               disabled={page <= 1 || isLoading}
-              onClick={() => fetchUsers(page - 1)}
+              onClick={() => handlePageChange(page - 1)}
               style={{
                 ...paginationButtonStyle,
                 cursor: page <= 1 || isLoading ? "not-allowed" : "pointer",
@@ -826,7 +837,7 @@ export default function UserManagementPage() {
             {visiblePages.map((pageNumber) => (
               <button
                 key={pageNumber}
-                onClick={() => fetchUsers(pageNumber)}
+                onClick={() => handlePageChange(pageNumber)}
                 disabled={isLoading}
                 style={{
                   ...paginationButtonStyle,
@@ -842,7 +853,7 @@ export default function UserManagementPage() {
             ))}
             <button
               disabled={page >= pages || isLoading}
-              onClick={() => fetchUsers(page + 1)}
+              onClick={() => handlePageChange(page + 1)}
               style={{
                 ...paginationButtonStyle,
                 cursor: page >= pages || isLoading ? "not-allowed" : "pointer",
