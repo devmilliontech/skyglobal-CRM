@@ -14,9 +14,9 @@ import {
   Settings,
   HelpCircle,
   LogOut,
-  ChevronRight,
   User,
   BarChart2,
+  TicketPercent,
 } from "lucide-react";
 import styles from "./Sidebar.module.css";
 import { useEffect, useState } from "react";
@@ -31,6 +31,7 @@ const menuItems = [
   { name: "Owners", path: "/owners", icon: User, hasSub: true },
   { name: "Agreements", path: "/agreements", icon: FileBox, hasSub: true },
   { name: "Finance", path: "/finance", icon: Wallet, hasSub: true },
+  { name: "Promo Codes", path: "/promo-codes", icon: TicketPercent },
   { name: "Reports", path: "/reports", icon: BarChart2 },
   { name: "Notifications", path: "/notifications", icon: Bell },
   { name: "Admin Settings", path: "/admin-settings", icon: Settings },

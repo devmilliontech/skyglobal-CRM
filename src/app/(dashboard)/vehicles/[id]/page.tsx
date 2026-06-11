@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   ChevronRight,
   Edit3,
-  FileText,
   History,
   Image as ImageIcon,
 } from "lucide-react";
@@ -31,6 +30,11 @@ const dateText = (value?: string | null) => {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
 };
 
+const cleanText = (value?: string | null) => {
+  const text = String(value || "").trim();
+  return text || undefined;
+};
+
 export default function VehicleDetails() {
   const router = useRouter();
   const params = useParams();
@@ -46,8 +50,8 @@ export default function VehicleDetails() {
     try {
       const response = await vehiclesApi.getVehicleById(vehicleId);
       setDetail(response.data);
-    } catch (err: any) {
-      setError(err.message || "Failed to load vehicle");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load vehicle");
     } finally {
       setLoading(false);
     }
@@ -78,8 +82,8 @@ export default function VehicleDetails() {
         reason || `Updated from admin vehicle detail page`,
       );
       await fetchVehicle();
-    } catch (err: any) {
-      setError(err.message || "Failed to update listing status");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update listing status");
     } finally {
       setSaving(false);
     }
@@ -92,6 +96,37 @@ export default function VehicleDetails() {
     () => Object.values(detail?.complianceDocuments || {}),
     [detail?.complianceDocuments],
   );
+  const expiryRows = useMemo(() => {
+    if (!vehicle) return [];
+
+    const registration = detail?.complianceExpiry?.registration;
+    const insurance = detail?.complianceExpiry?.insurance;
+
+    return [
+      {
+        label: "Registration Expires",
+        value:
+          cleanText(vehicle.registrationExpiryDisplay) ||
+          cleanText(registration?.displayDate) ||
+          cleanText(registration?.expiryDate) ||
+          "N/A",
+        status:
+          cleanText(vehicle.registrationExpiryStatus) ||
+          cleanText(registration?.status),
+      },
+      {
+        label: "Insurance Expires",
+        value:
+          cleanText(vehicle.insuranceExpiryDisplay) ||
+          cleanText(insurance?.displayDate) ||
+          cleanText(insurance?.expiryDate) ||
+          "N/A",
+        status:
+          cleanText(vehicle.insuranceExpiryStatus) ||
+          cleanText(insurance?.status),
+      },
+    ];
+  }, [detail?.complianceExpiry, vehicle]);
   const primaryImage = vehicle?.images?.[0] || vehicle?.mainPhoto;
 
   const labelStyle: React.CSSProperties = {
@@ -231,6 +266,11 @@ export default function VehicleDetails() {
                   ["VIN", vehicle.vin || "--"],
                   ["Seats", vehicle.seatingCapacity || "--"],
                 ]}
+                labelStyle={labelStyle}
+                valueStyle={valueStyle}
+              />
+              <ExpiryStatusGrid
+                rows={expiryRows}
                 labelStyle={labelStyle}
                 valueStyle={valueStyle}
               />
@@ -440,6 +480,39 @@ function InfoList({
         <div key={label}>
           <p style={labelStyle}>{label}</p>
           <p style={{ ...valueStyle, fontSize: "0.88rem" }}>{value || "--"}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExpiryStatusGrid({
+  rows,
+  labelStyle,
+  valueStyle,
+}: {
+  rows: { label: string; value: string; status?: string }[];
+  labelStyle: React.CSSProperties;
+  valueStyle: React.CSSProperties;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        gap: "1.25rem",
+        marginTop: "1.25rem",
+        paddingTop: "1.25rem",
+        borderTop: "1px solid #F3F4F6",
+      }}
+    >
+      {rows.map((row) => (
+        <div key={row.label}>
+          <p style={labelStyle}>{row.label}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            <p style={valueStyle}>{row.value || "N/A"}</p>
+            {row.status ? <StatusBadge status={row.status} /> : null}
+          </div>
         </div>
       ))}
     </div>

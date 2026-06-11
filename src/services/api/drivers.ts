@@ -1,6 +1,7 @@
 import { apiFetch, apiDownloadPost } from "./client";
 
 type ApiResponse<T> = { success: boolean; data: T; message?: string };
+type ApiRecord = Record<string, unknown>;
 
 export interface Driver {
   _id: string;
@@ -42,14 +43,93 @@ export interface DriversFilters {
   search?: string;
 }
 
-const mapDriverStats = (stats: Record<string, any> = {}): DriverStats => ({
-  total: stats.totalDrivers ?? 0,
-  active: stats.activeDrivers ?? 0,
-  suspended: stats.suspended ?? 0,
-  pendingVerification: stats.pendingVerification ?? 0,
-  overduePayments: stats.overduePayments ?? 0,
-  expiringLicence: stats.expiringLicence ?? 0,
-  expiringVisa: stats.expiringVisa ?? 0,
+export type DriverDocumentDetails = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
+export interface DriverDocument {
+  id?: string;
+  _id?: string;
+  type?: string;
+  status?: string;
+  imageUrl?: string | null;
+  fileUrl?: string | null;
+  url?: string | null;
+  documentUrl?: string | null;
+  secondaryImageUrl?: string | null;
+  secondaryFileUrl?: string | null;
+  secondaryUrl?: string | null;
+  imageUrls?: string[];
+  details?: DriverDocumentDetails;
+  editableDetails?: DriverDocumentDetails;
+  extractedData?: DriverDocumentDetails;
+  verifiedData?: DriverDocumentDetails;
+  detailsSource?: "OCR" | "Admin Verified" | "Not Provided" | string;
+  ocr?: {
+    status?: string;
+    extractedData?: DriverDocumentDetails;
+    confidence?: string | number | null;
+  };
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
+  rejectionReason?: string;
+}
+
+export interface DriverDocumentNote {
+  id?: string;
+  author?: string;
+  timestamp?: string;
+  text?: string;
+}
+
+export interface DriverDocumentSummary {
+  approved?: number;
+  pendingReview?: number;
+  rejected?: number;
+  totalDocuments?: number;
+}
+
+export interface DriverDocumentsResponse {
+  documents?: DriverDocument[];
+  internalNotes?: DriverDocumentNote[];
+  summary?: DriverDocumentSummary | null;
+}
+
+export interface DriverDocumentMutationResponse {
+  document?: DriverDocument;
+}
+
+export interface DriverDocumentStatusPayload {
+  status: string;
+  reason?: string;
+  documentDetails?: DriverDocumentDetails;
+}
+
+const asRecord = (value: unknown): ApiRecord =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as ApiRecord)
+    : {};
+
+const asNumber = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+  return 0;
+};
+
+const mapDriverStats = (stats: ApiRecord = {}): DriverStats => ({
+  total: asNumber(stats.totalDrivers),
+  active: asNumber(stats.activeDrivers),
+  suspended: asNumber(stats.suspended),
+  pendingVerification: asNumber(stats.pendingVerification),
+  overduePayments: asNumber(stats.overduePayments),
+  expiringLicence: asNumber(stats.expiringLicence),
+  expiringVisa: asNumber(stats.expiringVisa),
 });
 
 export const driversApi = {
@@ -68,21 +148,21 @@ export const driversApi = {
       }
     });
     const qs = params.toString();
-    const res = await apiFetch<ApiResponse<any>>(
+    const res = await apiFetch<ApiResponse<ApiRecord>>(
       `/admin/drivers${qs ? `?${qs}` : ""}`,
     );
 
-    const payload = res.data || {};
-    const pagination = payload.pagination || {};
+    const payload = asRecord(res.data);
+    const pagination = asRecord(payload.pagination);
 
     return {
       ...res,
       data: {
-        drivers: payload.drivers || [],
-        total: pagination.totalDocuments ?? 0,
-        page: pagination.currentPage ?? 1,
-        pages: pagination.totalPages ?? 1,
-        stats: mapDriverStats(payload.stats),
+        drivers: Array.isArray(payload.drivers) ? payload.drivers : [],
+        total: asNumber(pagination.totalDocuments),
+        page: asNumber(pagination.currentPage) || 1,
+        pages: asNumber(pagination.totalPages) || 1,
+        stats: mapDriverStats(asRecord(payload.stats)),
       },
     } as ApiResponse<{
       drivers: Driver[];
@@ -109,8 +189,8 @@ export const driversApi = {
     }),
 
   getDriverStats: async () => {
-    const res = await apiFetch<ApiResponse<any>>("/admin/drivers?limit=1");
-    const stats = mapDriverStats(res.data?.stats);
+    const res = await apiFetch<ApiResponse<ApiRecord>>("/admin/drivers?limit=1");
+    const stats = mapDriverStats(asRecord(asRecord(res.data).stats));
     return { ...res, data: stats } as ApiResponse<DriverStats>;
   },
 
@@ -118,7 +198,7 @@ export const driversApi = {
     apiDownloadPost("/admin/export/drivers", payload),
 
   getExportHistory: async () =>
-    apiFetch<ApiResponse<any[]>>("/admin/export/history"),
+    apiFetch<ApiResponse<ApiRecord[]>>("/admin/export/history"),
 
   getKycQueue: async (
     filters: { page?: number; limit?: number; status?: string } = {},
@@ -134,18 +214,45 @@ export const driversApi = {
   },
 
   getDriverDocuments: async (driverId: string) => 
-    apiFetch<ApiResponse<any>>(`/admin/drivers/${driverId}/documents`),
+    apiFetch<ApiResponse<DriverDocumentsResponse>>(
+      `/admin/drivers/${driverId}/documents`,
+      { cache: "no-store" },
+    ),
 
-  updateDriverDocumentStatus: async (driverId: string, docId: string, payload: { status: string; reason?: string }) =>
-    apiFetch<ApiResponse<any>>(`/admin/drivers/${driverId}/documents/${docId}/status`, {
+  updateDriverDocumentDetails: async (
+    driverId: string,
+    docId: string,
+    documentDetails: DriverDocumentDetails,
+  ) =>
+    apiFetch<ApiResponse<DriverDocumentMutationResponse>>(
+      `/admin/drivers/${driverId}/documents/${docId}/details`,
+      {
+        method: "PATCH",
+        body: { documentDetails },
+      },
+    ),
+
+  updateDriverDocumentStatus: async (
+    driverId: string,
+    docId: string,
+    payload: DriverDocumentStatusPayload,
+  ) =>
+    apiFetch<ApiResponse<DriverDocumentMutationResponse>>(`/admin/drivers/${driverId}/documents/${docId}/status`, {
       method: "PATCH",
       body: payload
     }),
 
+  retryDriverDocumentOcr: async (driverId: string, docId: string) =>
+    apiFetch<ApiResponse<DriverDocumentMutationResponse>>(
+      `/admin/drivers/${driverId}/documents/${docId}/ocr/retry`,
+      {
+        method: "POST",
+      },
+    ),
+
   addDriverNote: async (driverId: string, payload: { text: string }) =>
-    apiFetch<ApiResponse<any>>(`/admin/drivers/${driverId}/notes`, {
+    apiFetch<ApiResponse<DriverDocumentNote>>(`/admin/drivers/${driverId}/notes`, {
       method: "POST",
       body: payload
     })
 };
-

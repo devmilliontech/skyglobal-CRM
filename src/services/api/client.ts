@@ -13,6 +13,7 @@ const resolveBaseUrl = () => {
 const API_BASE_URL = resolveBaseUrl();
 
 type ApiOptions = Omit<RequestInit, "body"> & { body?: unknown };
+type JsonPayload = { success?: boolean; message?: string } & Record<string, unknown>;
 
 /**
  * Retrieve the admin JWT token from localStorage (client-side only).
@@ -82,7 +83,29 @@ export const apiFetch = async <T>(
   }
 
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
+  const contentType = response.headers.get("Content-Type") || "";
+  let payload: JsonPayload = {};
+
+  if (text) {
+    if (contentType.includes("application/json")) {
+      try {
+        payload = JSON.parse(text) as JsonPayload;
+      } catch {
+        throw new Error("API returned invalid JSON");
+      }
+    } else {
+      const htmlMessage =
+        text.match(/<pre>([\s\S]*?)<\/pre>/i)?.[1] ||
+        text.match(/<title>([\s\S]*?)<\/title>/i)?.[1];
+      const cleanMessage = htmlMessage
+        ? htmlMessage.replace(/<[^>]*>/g, "").trim()
+        : "";
+      throw new Error(
+        cleanMessage ||
+          `API returned ${contentType || "a non-JSON response"}`,
+      );
+    }
+  }
 
   if (!response.ok || payload?.success === false) {
     const message = payload?.message || "Request failed";

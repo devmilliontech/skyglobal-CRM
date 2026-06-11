@@ -64,6 +64,24 @@ export interface AdminVehicleDetail {
     isAvailable?: boolean;
     seatingCapacity?: string;
     features?: string[];
+    registrationExpiryDisplay?: string | null;
+    registrationExpiryStatus?: string | null;
+    insuranceExpiryDisplay?: string | null;
+    insuranceExpiryStatus?: string | null;
+  };
+  complianceExpiry?: {
+    registration?: {
+      expiryDate?: string | null;
+      displayDate?: string | null;
+      status?: string | null;
+      documentUrl?: string | null;
+    };
+    insurance?: {
+      expiryDate?: string | null;
+      displayDate?: string | null;
+      status?: string | null;
+      documentUrl?: string | null;
+    };
   };
   listingDetails: {
     dailyRate?: number;

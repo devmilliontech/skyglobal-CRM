@@ -49,7 +49,10 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
     lowerStatus.includes("partial") ||
     lowerStatus.includes("maintenance") ||
     lowerStatus.includes("under review") ||
-    lowerStatus.includes("missing")
+    lowerStatus.includes("missing") ||
+    lowerStatus.includes("expiring") ||
+    lowerStatus.includes("incomplete") ||
+    lowerStatus.includes("used up")
   ) {
     color = "#fff"; // Amber/Yellow
     bg = "#f59e0b";
