@@ -172,7 +172,7 @@ export default function PromoCodesPage() {
     () => ({
       active: promoCodes.filter((promo) => getPromoStatus(promo) === "Active").length,
       expired: promoCodes.filter((promo) => getPromoStatus(promo) === "Expired").length,
-      usedUp: promoCodes.filter((promo) => getPromoStatus(promo) === "Used Up").length,
+      totalUses: promoCodes.reduce((sum, promo) => sum + promo.usedCount, 0),
     }),
     [promoCodes],
   );
@@ -302,7 +302,7 @@ export default function PromoCodesPage() {
         <SummaryTile label="Total Codes" value={String(total || promoCodes.length)} />
         <SummaryTile label="Active" value={String(stats.active)} tone="success" />
         <SummaryTile label="Expired" value={String(stats.expired)} tone="danger" />
-        <SummaryTile label="Used Up" value={String(stats.usedUp)} tone="warning" />
+        <SummaryTile label="Total Uses" value={String(stats.totalUses)} tone="warning" />
       </div>
 
       <Card padding="0">
