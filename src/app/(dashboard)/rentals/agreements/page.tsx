@@ -50,7 +50,7 @@ const tableHeaderStyle: React.CSSProperties = {
   fontSize: "0.68rem",
   fontWeight: 800,
   color: "#64748B",
-  textAlign: "left",
+  textAlign: "center",
   textTransform: "uppercase",
   background: "#F8FAFC",
 };
@@ -59,7 +59,8 @@ const tableCellStyle: React.CSSProperties = {
   padding: "1rem",
   fontSize: "0.8rem",
   color: "#1E293B",
-  verticalAlign: "middle",
+  // verticalAlign: "middle",
+  textAlign: "center",
 };
 
 const selectStyle: React.CSSProperties = {
@@ -267,7 +268,6 @@ export default function AgreementsManagement() {
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       <PageHeader
         title="Agreement Management"
-        description="Dashboard / Rentals / Agreements"
         searchValue={search}
         onSearchChange={setSearch}
         customActions={
@@ -383,7 +383,7 @@ export default function AgreementsManagement() {
                   <tr
                     key={key}
                     onClick={() => openAgreement(agreement)}
-                    style={{ borderTop: `1px solid ${COLORS.BORDER_MAIN}`, cursor: "pointer" }}
+                    style={{ borderTop: `1px solid ${COLORS.BORDER_MAIN}`, cursor: "pointer",textAlign: "center" }}
                   >
                     <td style={tableCellStyle}>
                       <p style={{ fontWeight: 800, color: "#0F172A", marginBottom: "0.18rem" }}>{key}</p>
@@ -395,23 +395,16 @@ export default function AgreementsManagement() {
                       {type}
                     </td>
                     <td style={tableCellStyle}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: 0 }}>
-                        <img
-                          src={`https://ui-avatars.com/api/?name=${encodeURIComponent(agreement.driverName || "Unknown")}&background=E2E8F0&color=475569`}
-                          alt=""
-                          style={{ width: "26px", height: "26px", borderRadius: "50%", flex: "0 0 auto" }}
-                        />
-                        <div style={{ minWidth: 0 }}>
-                          <p style={{ color: COLORS.PRIMARY_MAIN, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {agreement.driverName || "Unknown"}
-                          </p>
-                          <p style={{ color: COLORS.TEXT_SECONDARY, fontSize: "0.7rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {agreement.driverEmail || ""}
+                      <div style={{ alignItems: "center" }}>
+                        <div style={{ minWidth: "1.5rem", alignItems: "center" }}>
+                          <p style={{ color: COLORS.PRIMARY_MAIN, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"}}>
+                            {agreement.driverName || "Not Assigned"}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td style={{ ...tableCellStyle, color: COLORS.PRIMARY_MAIN, fontWeight: 700, overflowWrap: "anywhere" }}>
+                    <td 
+                    style={{ ...tableCellStyle, color: COLORS.PRIMARY_MAIN, fontWeight: 700, overflowWrap: "anywhere",textAlign: "center" }}>
                       {agreement.ownerEmail || "--"}
                     </td>
                     <td style={tableCellStyle}>

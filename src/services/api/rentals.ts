@@ -175,6 +175,8 @@ export interface Agreement {
   title?: string;
   driverName?: string;
   driverEmail?: string;
+  driverLicenceNumber?: string;
+  driverProfileImage?: string | null;
   driverId?: string;
   ownerEmail?: string;
   ownerId?: string;

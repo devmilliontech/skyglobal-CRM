@@ -61,6 +61,15 @@ const fullName = (person: any) =>
   || person?.email
   || "Unknown";
 
+const driverEmail = (driver: any) =>
+  driver?.userId?.email || driver?.email || "--";
+
+const driverImage = (driver: any) => {
+  if (driver?.profileImage) return driver.profileImage;
+  const name = fullName(driver);
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=E2E8F0&color=475569`;
+};
+
 const vehicleName = (vehicle: any) =>
   [vehicle?.year, vehicle?.make, vehicle?.model].filter(Boolean).join(" ").trim()
   || vehicle?.registration
@@ -301,7 +310,15 @@ export default function AgreementDetails() {
         <Card style={{ borderRadius: "8px", background: "#F8FAFC" }}>
           <SectionTitle icon={<FileText size={18} color={COLORS.PRIMARY_MAIN} />}>Full Agreement Snapshot</SectionTitle>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
-            <DetailItem label="Driver" value={fullName(driver)} />
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+              <img src={driverImage(driver)} alt={fullName(driver)} style={{ width: "36px", height: "36px", borderRadius: "50%", objectFit: "cover" }} />
+              <div>
+                <p style={{ fontSize: "0.68rem", color: COLORS.TEXT_MUTED, fontWeight: 800, textTransform: "uppercase", marginBottom: "0.15rem" }}>Driver</p>
+                <p style={{ fontSize: "0.84rem", fontWeight: 700, color: COLORS.TEXT_MAIN }}>{fullName(driver)}</p>
+              </div>
+            </div>
+            <DetailItem label="Driver Email" value={driverEmail(driver)} />
+            <DetailItem label="Driver Licence" value={driver.driverLicenceNumber || "--"} />
             <DetailItem label="Owner" value={ownerProfile.fullName || ownerProfile.businessName || owner.email || "--"} />
             <DetailItem label="Vehicle" value={vehicleName(vehicle)} />
             <DetailItem label="Registration" value={vehicle.registration || "--"} />
@@ -417,8 +434,17 @@ export default function AgreementDetails() {
           <Card style={{ borderRadius: "8px" }}>
             <SectionTitle icon={<User size={18} color={COLORS.PRIMARY_MAIN} />}>Parties</SectionTitle>
             <div style={{ display: "grid", gap: "0.85rem" }}>
-              <DetailItem label="Driver" value={fullName(driver)} />
-              <DetailItem label="Driver Email" value={driver.userId?.email || driver.email || "--"} />
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <img
+                  src={driverImage(driver)}
+                  alt={fullName(driver)}
+                  style={{ width: "48px", height: "48px", borderRadius: "50%", objectFit: "cover", border: `2px solid ${COLORS.BORDER_MAIN}` }}
+                />
+                <div>
+                  <p style={{ fontSize: "0.9rem", fontWeight: 800, color: COLORS.TEXT_MAIN }}>{fullName(driver)}</p>
+                  <p style={{ fontSize: "0.75rem", color: COLORS.TEXT_SECONDARY }}>{driverEmail(driver)}</p>
+                </div>
+              </div>
               <DetailItem label="Driver Licence" value={driver.driverLicenceNumber || "--"} />
               <DetailItem label="Owner" value={ownerProfile.fullName || ownerProfile.businessName || owner.email || "--"} />
               <DetailItem label="Owner Email" value={owner.email || "--"} />
