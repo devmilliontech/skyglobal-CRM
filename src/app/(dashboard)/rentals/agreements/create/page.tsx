@@ -1,96 +1,294 @@
 "use client";
-import { COLORS } from "@/constants/Constant";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
-  Search as SearchIcon,
-  Plus,
-  Bell,
-  FileText,
-  Users,
-  Info,
-  ChevronRight,
-  SwitchCamera,
-  NotepadText,
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
-  Check,
-  Clock,
-  X,
   Calendar,
   Car,
-  AlertTriangle,
-  Link,
-  Package,
-  Power,
+  Check,
+  Clock,
+  DollarSign,
+  FileText,
+  Info,
+  ShieldCheck,
+  Users,
+  X,
 } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
+
+import Breadcrumb from "@/components/Breadcrumb";
+import Button from "@/components/Button";
+import Card from "@/components/Card";
 import PageHeader from "@/components/PageHeader";
 import TabsNav from "@/components/TabsNav";
-import Breadcrumb from "@/components/Breadcrumb";
-import SelectField from "@/components/SelectField";
+import { COLORS } from "@/constants/Constant";
+import { driversApi, Driver } from "@/services/api/drivers";
+import { ownersApi, Owner } from "@/services/api/owners";
+import { vehiclesApi, Vehicle } from "@/services/api/vehicles";
+import { rentalsApi } from "@/services/api/rentals";
+
+const tabs = [
+  { name: "Rentals Management", path: "/rentals" },
+  { name: "Agreements", path: "/rentals/agreements" },
+  { name: "Disputes & Refunds", path: "/rentals/disputes" },
+  { name: "Admin Notes & Audit", path: "/rentals/audit" },
+];
+
+type AgreementForm = {
+  title: string;
+  type: string;
+  startDate: string;
+  endDate: string;
+  driverId: string;
+  ownerId: string;
+  vehicleId: string;
+  mileageStart: string;
+  amount: string;
+  repaymentAmount: string;
+  fixedFee: string;
+  deposit: string;
+  paymentMethod: string;
+  insuranceType: string;
+  overrideDeposits: boolean;
+  internalNotes: string;
+};
+
+const initialForm: AgreementForm = {
+  title: "",
+  type: "Short-Term",
+  startDate: "",
+  endDate: "",
+  driverId: "",
+  ownerId: "",
+  vehicleId: "",
+  mileageStart: "",
+  amount: "",
+  repaymentAmount: "",
+  fixedFee: "0",
+  deposit: "",
+  paymentMethod: "Credit Card",
+  insuranceType: "Comprehensive",
+  overrideDeposits: false,
+  internalNotes: "",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  height: "38px",
+  padding: "0 0.75rem",
+  borderRadius: "8px",
+  border: `1px solid ${COLORS.BORDER_MAIN}`,
+  background: COLORS.BG_CARD,
+  fontSize: "0.82rem",
+  color: COLORS.TEXT_MAIN,
+  outline: "none",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  marginBottom: "0.35rem",
+  fontSize: "0.72rem",
+  fontWeight: 800,
+  color: COLORS.TEXT_SECONDARY,
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  marginBottom: "1rem",
+  fontSize: "0.95rem",
+  fontWeight: 800,
+  color: COLORS.TEXT_MAIN,
+};
+
+const parseMoney = (value: string) => Number(value || 0);
+
+const dateTimeLocalToIso = (value: string) => value ? new Date(value).toISOString() : "";
+
+const formatDate = (value: string) => {
+  if (!value) return "--";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "--" : date.toLocaleString();
+};
+
+const formatMoney = (value: string | number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value || 0));
+
+const durationWeeks = (startDate: string, endDate: string) => {
+  if (!startDate || !endDate) return 0;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return 0;
+  return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 7)));
+};
+
+function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label style={labelStyle}>
+        {label} {required ? <span style={{ color: COLORS.ERROR_MAIN }}>*</span> : null}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function InfoPanel({ tone = "info", children }: { tone?: "info" | "success" | "warning"; children: React.ReactNode }) {
+  const palette = {
+    info: { bg: "#EFF6FF", border: "#BFDBFE", color: COLORS.PRIMARY_MAIN, icon: <Info size={16} /> },
+    success: { bg: "#ECFDF5", border: "#A7F3D0", color: COLORS.SUCCESS_MAIN, icon: <ShieldCheck size={16} /> },
+    warning: { bg: "#FFFBEB", border: "#FDE68A", color: COLORS.WARNING_MAIN, icon: <AlertTriangle size={16} /> },
+  }[tone];
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: "0.55rem", padding: "0.75rem", borderRadius: "8px", border: `1px solid ${palette.border}`, background: palette.bg, color: palette.color, fontSize: "0.8rem", fontWeight: 600 }}>
+      {palette.icon}
+      <span>{children}</span>
+    </div>
+  );
+}
 
 export default function CreateAgreement() {
   const router = useRouter();
-  const pathname = usePathname();
   const [activeTab, setActiveTab] = useState("Agreements");
   const [currentStep, setCurrentStep] = useState(1);
+  const [form, setForm] = useState<AgreementForm>(initialForm);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const tabs = [
-    {
-      name: "Rentals Management",
-      path: "/rentals",
-    },
-    {
-      name: "Agreements",
-      path: "/rentals/agreements",
-    },
-    {
-      name: "Disputes & Refunds",
-      path: "/rentals/disputes",
-    },
-    {
-      name: "Admin Notes & Audit",
-      path: "/rentals/audit",
-    },
-  ];
+  useEffect(() => {
+    const loadOptions = async () => {
+      setLoadingOptions(true);
+      try {
+        const [driverRes, ownerRes, vehicleRes] = await Promise.all([
+          driversApi.getDrivers({ limit: 100 }),
+          ownersApi.getOwnersDashboard({ limit: 100 }),
+          vehiclesApi.getVehicles({ limit: 100, adminListingStatus: "Approved" }),
+        ]);
+        setDrivers(driverRes.data.drivers || []);
+        setOwners(ownerRes.data.owners || []);
+        setVehicles(vehicleRes.data.vehicles || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load form data");
+      } finally {
+        setLoadingOptions(false);
+      }
+    };
 
-  const inputStyle = {
-    padding: "0.6rem 0.75rem",
-    borderRadius: "8px",
-    border: "1px solid #E5E7EB",
-    fontSize: "0.85rem",
-    width: "100%",
-    outline: "none",
-    background: "#ffffff",
+    loadOptions();
+  }, []);
+
+  const selectedDriver = useMemo(
+    () => drivers.find((driver) => driver._id === form.driverId),
+    [drivers, form.driverId],
+  );
+  const selectedOwner = useMemo(
+    () => owners.find((owner) => owner._id === form.ownerId),
+    [owners, form.ownerId],
+  );
+  const selectedVehicle = useMemo(
+    () => vehicles.find((vehicle) => vehicle._id === form.vehicleId),
+    [vehicles, form.vehicleId],
+  );
+  const weeks = durationWeeks(form.startDate, form.endDate);
+
+  const updateForm = (patch: Partial<AgreementForm>) => {
+    setForm((current) => ({ ...current, ...patch }));
   };
 
-  const readOnlyInputStyle = {
-    ...inputStyle,
-    background: "#F9FAFB",
-    color: "#9CA3AF",
+  const onVehicleChange = (vehicleId: string) => {
+    const vehicle = vehicles.find((item) => item._id === vehicleId);
+    updateForm({
+      vehicleId,
+      ownerId: vehicle?.ownerId || form.ownerId,
+      mileageStart: form.mileageStart,
+      title: form.title || [vehicle?.make, vehicle?.model, selectedDriver?.name].filter(Boolean).join(" - "),
+    });
   };
 
-  const labelStyle = {
-    fontSize: "0.75rem",
-    fontWeight: 600,
-    color: "#6B7280",
-    marginBottom: "0.4rem",
-    display: "block",
+  const validate = () => {
+    const required: Array<keyof AgreementForm> = [
+      "title",
+      "type",
+      "startDate",
+      "endDate",
+      "driverId",
+      "ownerId",
+      "vehicleId",
+      "amount",
+      "deposit",
+      "paymentMethod",
+      "insuranceType",
+    ];
+    const missing = required.filter((field) => !String(form[field] || "").trim());
+    if (missing.length) return "Please complete all required fields.";
+    if (!weeks) return "End date must be after start date.";
+    return null;
   };
 
-  const requiredAsterisk = <span style={{ color: COLORS.ERROR_MAIN }}>*</span>;
+  const buildPayload = (status: string) => ({
+    title: form.title,
+    type: form.type,
+    startDate: dateTimeLocalToIso(form.startDate),
+    endDate: dateTimeLocalToIso(form.endDate),
+    driverId: form.driverId,
+    ownerId: form.ownerId,
+    vehicleId: form.vehicleId,
+    mileageStart: Number(form.mileageStart || 0),
+    amount: parseMoney(form.amount),
+    repaymentAmount: parseMoney(form.repaymentAmount || String(parseMoney(form.amount) / Math.max(weeks, 1))),
+    fixedFee: parseMoney(form.fixedFee),
+    deposit: parseMoney(form.deposit),
+    overrideDeposits: form.overrideDeposits,
+    paymentMethod: form.paymentMethod,
+    insuranceType: form.insuranceType,
+    internalNotes: form.internalNotes,
+    status: status === "Active" ? "Pending" : status,
+  });
+
+  const submitAgreement = async (status: "Draft" | "Pending" | "Active") => {
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await rentalsApi.createDraftAgreement(buildPayload(status));
+      const identifier = created.data.agreementId || created.data._id;
+
+      if (status === "Active" && identifier) {
+        await rentalsApi.approveAgreement(identifier);
+      }
+
+      router.push(`/rentals/agreements/${encodeURIComponent(identifier)}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create agreement");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "1.5rem",
-      }}
-    >
-      {/* Header section */}
-      <PageHeader title="Create Agreement" />
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      <PageHeader title="Create Agreement" enableSearch={false} showBack />
       <TabsNav tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} />
       <Breadcrumb
         items={[
@@ -101,2049 +299,265 @@ export default function CreateAgreement() {
         ]}
       />
 
-      <div
-        style={{
-          width: "100%",
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: "1.5rem",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            background: COLORS.BG_CARD,
-            padding: "1.25rem 1.5rem",
-            borderRadius: "12px",
-            border: "1px solid #E5E7EB",
-          }}
-        >
-          <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "#111827" }}>
-            Step {currentStep} of 2:{" "}
-            {currentStep === 1
-              ? "Create Agreement"
-              : "Review & Activate Agreement"}
-          </h3>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-            <div
-              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-            >
-              <div
-                style={{
-                  width: "24px",
-                  height: "24px",
-                  borderRadius: "50%",
-                  background:
-                    currentStep === 1 ? "#2563EB" : COLORS.SUCCESS_MAIN,
-                  color: COLORS.BG_CARD,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                }}
-              >
-                {currentStep === 1 ? 1 : <Check size={14} />}
+      <Card padding="1rem" style={{ borderRadius: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+          <div>
+            <h3 style={{ fontSize: "0.98rem", fontWeight: 800 }}>
+              Step {currentStep} of 2: {currentStep === 1 ? "Agreement Details" : "Review & Activate"}
+            </h3>
+            <p style={{ color: COLORS.TEXT_SECONDARY, fontSize: "0.78rem", marginTop: "0.25rem" }}>
+              Driver bookings create pending agreements automatically; this form is for admin-created agreements.
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            {[1, 2].map((step) => (
+              <div key={step} style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                <span style={{ width: "24px", height: "24px", borderRadius: "50%", display: "grid", placeItems: "center", background: step < currentStep ? COLORS.SUCCESS_MAIN : step === currentStep ? COLORS.PRIMARY_MAIN : "#F1F5F9", color: step <= currentStep ? COLORS.BG_CARD : COLORS.TEXT_MUTED, fontSize: "0.75rem", fontWeight: 800 }}>
+                  {step < currentStep ? <Check size={14} /> : step}
+                </span>
+                <span style={{ fontSize: "0.78rem", fontWeight: 800, color: step === currentStep ? COLORS.PRIMARY_MAIN : COLORS.TEXT_SECONDARY }}>
+                  {step === 1 ? "Details" : "Review"}
+                </span>
               </div>
-              <span
-                style={{
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  color: currentStep === 1 ? "#2563EB" : COLORS.SUCCESS_MAIN,
-                }}
-              >
-                Agreement Details
-              </span>
-            </div>
-            <div
-              style={{ width: "24px", height: "2px", background: "#d9d9d9ff" }}
-            />
-            <div
-              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-            >
-              <div
-                style={{
-                  width: "24px",
-                  height: "24px",
-                  borderRadius: "50%",
-                  background: currentStep === 2 ? "#2563EB" : "#F3F4F6",
-                  color: currentStep === 2 ? "white" : "#9CA3AF",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                }}
-              >
-                2
-              </div>
-              <span
-                style={{
-                  fontSize: "0.85rem",
-                  fontWeight: currentStep === 2 ? 600 : 500,
-                  color: currentStep === 2 ? "#2563EB" : "#9CA3AF",
-                }}
-              >
-                Review & Activate
-              </span>
-            </div>
+            ))}
           </div>
         </div>
+      </Card>
 
-        {currentStep === 1 && (
-          <>
-            {/* Agreement Basics */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.25rem",
-                }}
-              >
-                <FileText size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Agreement Basics
-                </h3>
-              </div>
+      {error && (
+        <div style={{ padding: "0.9rem 1rem", borderRadius: "8px", border: "1px solid #FECACA", background: "#FEF2F2", color: "#B91C1C", fontSize: "0.85rem" }}>
+          {error}
+        </div>
+      )}
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  gap: "1.5rem",
-                  marginBottom: "1.25rem",
-                }}
-              >
-                <div>
-                  <label style={labelStyle}>
-                    Agreement Title {requiredAsterisk}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Enter agreement title"
-                    style={inputStyle}
-                  />
-                </div>
-                <SelectField
-                  label="Agreement Type"
-                  options={[
-                    { label: "Select type", value: "Select type" },
-                    { label: "Short-Term", value: "Short-Term" },
-                    { label: "Rent-to-Own", value: "Rent-to-Own" },
-                  ]}
-                />
-                <div>
-                  <label style={labelStyle}>
-                    Agreement Duration (Weeks) {requiredAsterisk}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Auto-calculated"
-                    readOnly
-                    style={readOnlyInputStyle}
-                  />
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  gap: "1.5rem",
-                }}
-              >
-                <div>
-                  <label style={labelStyle}>
-                    Start Date & Time {requiredAsterisk}
-                  </label>
-                  <input type="datetime-local" style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>
-                    End Date & Time {requiredAsterisk}
-                  </label>
-                  <input type="datetime-local" style={inputStyle} />
-                </div>
-              </div>
+      {currentStep === 1 ? (
+        <>
+          <Card style={{ borderRadius: "8px" }}>
+            <h3 style={sectionTitleStyle}><FileText size={18} color={COLORS.PRIMARY_MAIN} /> Agreement Basics</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+              <Field label="Agreement Title" required>
+                <input value={form.title} onChange={(event) => updateForm({ title: event.target.value })} placeholder="Toyota Corolla - John Doe" style={inputStyle} />
+              </Field>
+              <Field label="Agreement Type" required>
+                <select value={form.type} onChange={(event) => updateForm({ type: event.target.value })} style={inputStyle}>
+                  <option>Short-Term</option>
+                  <option>Rent-to-Own</option>
+                  <option>Lease</option>
+                </select>
+              </Field>
+              <Field label="Duration">
+                <input value={weeks ? `${weeks} week${weeks > 1 ? "s" : ""}` : "Auto-calculated"} readOnly style={{ ...inputStyle, background: "#F8FAFC", color: COLORS.TEXT_SECONDARY }} />
+              </Field>
             </div>
-
-            {/* Driver & Owner Assignment */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.25rem",
-                }}
-              >
-                <Users size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Driver & Owner Assignment
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "1.5rem",
-                }}
-              >
-                <div>
-                  <SelectField
-                    label="Lease/Primary Driver"
-                    options={[
-                      { label: "Select driver", value: "Select driver" },
-                      {
-                        label: "John Doe - KYC Verified",
-                        value: "John Doe - KYC Verified",
-                      },
-                      {
-                        label: "Jane Smith - KYC Pending",
-                        value: "Jane Smith - KYC Pending",
-                      },
-                    ]}
-                  />
-                </div>
-                <div>
-                  <SelectField
-                    label="Owner"
-                    options={[
-                      { label: "Select owner", value: "Select owner" },
-                      { label: "Sarah Johnson", value: "Sarah Johnson" },
-                      {
-                        label: "Emma Davis - Inactive",
-                        value: "Emma Davis - Inactive",
-                      },
-                    ]}
-                  />
-                  <div
-                    style={{
-                      marginTop: "0.75rem",
-                      background: COLORS.PRIMARY_LIGHT,
-                      border: "1px solid #BFDBFE",
-                      borderRadius: "8px",
-                      padding: "0.75rem 1rem",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                    }}
-                  >
-                    <Info size={16} style={{ color: COLORS.PRIMARY_MAIN }} />
-                    <span
-                      style={{
-                        backgroundColor: "#e0f2fe",
-                        fontSize: "0.8rem",
-                        color: "#0ea5e9",
-                        fontWeight: 500,
-                      }}
-                    >
-                      Owner will be bound to driver via selected vehicle
-                    </span>
-                  </div>
-                </div>
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <Field label="Start Date & Time" required>
+                <input type="datetime-local" value={form.startDate} onChange={(event) => updateForm({ startDate: event.target.value })} style={inputStyle} />
+              </Field>
+              <Field label="End Date & Time" required>
+                <input type="datetime-local" value={form.endDate} onChange={(event) => updateForm({ endDate: event.target.value })} style={inputStyle} />
+              </Field>
             </div>
+          </Card>
 
-            {/* Vehicle Assignment */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.25rem",
-                }}
-              >
-                <Users size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Vehicle Assignment
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "1.5rem",
-                }}
-              >
-                <div>
-                  <SelectField
-                    label="Vehicle"
-                    options={[
-                      { label: "Select vehicle", value: "Select vehicle" },
-                      {
-                        label: "Toyota Corolla - ABC-1234 (Available)",
-                        value: "Toyota Corolla - ABC-1234 (Available)",
-                      },
-                      {
-                        label: "Honda Civic - XYZ-5678 (Insurance Expired)",
-                        value: "Honda Civic - XYZ-5678 (Insurance Expired)",
-                      },
-                    ]}
-                  />
-                </div>
-                <div>
-                  <label style={labelStyle}>
-                    Mileage at Agreement Start {requiredAsterisk}
-                  </label>
-                  <input
-                    type="number"
-                    style={inputStyle}
-                    placeholder="Enter current mileage"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Commercial Terms */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.25rem",
-                }}
-              >
-                <Users size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Commercial Terms
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  gridTemplateColumns: "1fr 1fr",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "row",
-                    gap: "1rem",
-                  }}
-                >
-                  <div style={{ width: "100%" }}>
-                    <label style={labelStyle}>
-                      Agreement Amount {requiredAsterisk}
-                    </label>
-                    <input
-                      type="number"
-                      style={inputStyle}
-                      placeholder="$ 0.00"
-                    />
-                  </div>
-                  <div style={{ width: "100%" }}>
-                    <label style={labelStyle}>
-                      Repayment {requiredAsterisk}
-                    </label>
-                    <input
-                      type="number"
-                      style={inputStyle}
-                      placeholder="$ 0.00"
-                    />
-                  </div>
-                  <div style={{ width: "100%" }}>
-                    <label style={labelStyle}>
-                      Repayment {requiredAsterisk}
-                    </label>
-                    <input
-                      type="number"
-                      style={inputStyle}
-                      placeholder="$ 0.00"
-                    />
-                  </div>
-                </div>
-                <div
-                  style={{
-                    marginTop: "0.75rem",
-                    background: COLORS.PRIMARY_LIGHT,
-                    border: "1px solid #BFDBFE",
-                    borderRadius: "8px",
-                    padding: "0.75rem 1rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                  }}
-                >
-                  <Info size={16} style={{ color: COLORS.PRIMARY_MAIN }} />
-                  <span
-                    style={{
-                      backgroundColor: "#e0f2fe",
-                      fontSize: "0.8rem",
-                      color: "#0ea5e9",
-                      fontWeight: 500,
-                    }}
-                  >
-                    Hybrid pricing model: Base repayment + variable charges
-                    supported
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Deposit and Insurence */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.25rem",
-                }}
-              >
-                <Users size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Deposit & Insurence
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  gridTemplateColumns: "1fr 1fr",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "row",
-                    gap: "1rem",
-                  }}
-                >
-                  <div style={{ width: "100%" }}>
-                    <label style={labelStyle}>Deposit {requiredAsterisk}</label>
-                    <input
-                      type="number"
-                      style={inputStyle}
-                      placeholder="$ 0.00"
-                    />
-                  </div>
-                  <div style={{ width: "100%" }}>
-                    <SelectField
-                      label="Preferred Payment Method"
-                      options={[
-                        {
-                          label: "Select payment method",
-                          value: "Select payment method",
-                        },
-                        { label: "Credit Card", value: "Credit Card" },
-                        { label: "Bank Transfer", value: "Bank Transfer" },
-                        { label: "Cash", value: "Cash" },
-                      ]}
-                    />
-                  </div>
-                  <div style={{ width: "100%" }}>
-                    <SelectField
-                      label="Insurance Cover"
-                      options={[
-                        {
-                          label: "Select insurance",
-                          value: "Select insurance",
-                        },
-                        { label: "Basic Coverage", value: "Basic Coverage" },
-                        {
-                          label: "Comprehensive Coverage",
-                          value: "Comprehensive Coverage",
-                        },
-                        { label: "Premium", value: "Premium" },
-                      ]}
-                    />
-                  </div>
-                </div>
-              </div>
-              <div style={{ marginTop: "1.5rem" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    id="overrideDeposits"
-                    style={{ width: "1rem", height: "1rem", cursor: "pointer" }}
-                  />
-                  <label
-                    htmlFor="overrideDeposits"
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 500,
-                      color: "#374151",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                    }}
-                  >
-                    Override Deposits {requiredAsterisk}
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            {/* Status & Activation */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.25rem",
-                }}
-              >
-                <SwitchCamera
-                  size={18}
-                  style={{ color: COLORS.PRIMARY_MAIN }}
-                />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Status Activation
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "1.5rem",
-                }}
-              >
-                <div>
-                  <SelectField
-                    label="Agreement Status"
-                    options={[
-                      { label: "Draft", value: "Draft" },
-                      { label: "Pending Approval", value: "Pending Approval" },
-                      { label: "Active", value: "Active" },
-                      { label: "Cancelled", value: "Cancelled" },
-                      { label: "Partially Paid", value: "Partially Paid" },
-                    ]}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Notes & Internal Flags */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.25rem",
-                }}
-              >
-                <NotepadText size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Notes / Internal Flags
-                </h3>
-              </div>
-
+          <Card style={{ borderRadius: "8px" }}>
+            <h3 style={sectionTitleStyle}><Users size={18} color={COLORS.PRIMARY_MAIN} /> Driver & Owner Assignment</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <Field label="Lease / Primary Driver" required>
+                <select value={form.driverId} onChange={(event) => updateForm({ driverId: event.target.value })} style={inputStyle} disabled={loadingOptions}>
+                  <option value="">Select driver</option>
+                  {drivers.map((driver) => (
+                    <option key={driver._id} value={driver._id}>
+                      {driver.name} - {driver.kycStatus || "KYC Pending"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <div>
-                <label style={labelStyle}>Internal Notes</label>
-                <textarea
-                  placeholder="Add internal comments about this driver..."
-                  style={{
-                    width: "100%",
-                    minHeight: "100px",
-                    padding: "0.75rem",
-                    borderRadius: "8px",
-                    border: `1px solid ${COLORS.BORDER_MAIN}`,
-                    fontSize: "0.8rem",
-                    fontFamily: "inherit",
-                    resize: "none",
-                    outline: "none",
-                    background: "#F9FAFB",
-                  }}
-                />
-              </div>
-            </div>
-            <div
-              style={{ backgroundColor: "#ddd", width: "100%", height: "1px" }}
-            />
-            <div
-              style={{
-                justifyContent: "space-between",
-                display: "flex",
-                alignItems: "center",
-                flexDirection: "row",
-                width: "100%",
-                gap: "1rem",
-              }}
-            >
-              <div>
-                <button
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "6px",
-                    border: "1px solid #E5E7EB",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                  }}
-                  onClick={() => router.back()}
-                >
-                  <ArrowLeft size={20} />
-                  Back
-                </button>
-              </div>
-              <div style={{ display: "flex", gap: "1rem" }}>
-                <button
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "6px",
-                    border: "1px solid #E5E7EB",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  Save Draft
-                </button>
-                <button
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "6px",
-                    border: "1px solid #E5E7EB",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontSize: "0.85rem",
-                    color: "#333",
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => setCurrentStep(2)}
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "6px",
-                    border: "1px solid #E5E7EB",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    color: "#fff",
-                    backgroundColor: COLORS.PRIMARY_MAIN,
-                  }}
-                >
-                  Next
-                  <ArrowRight size={20} />
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-
-        {currentStep === 2 && (
-          <>
-            {/* Agreement Summary */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.25rem",
-                }}
-              >
-                <FileText size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Agreement Summary
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  gap: "1.5rem",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1.25rem",
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Agreement Title
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      Toyota Corolla - John Doe - 4 Weeks
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Agreement Type
-                    </p>
-                    <span
-                      style={{
-                        background: COLORS.PRIMARY_LIGHT,
-                        color: COLORS.PRIMARY_MAIN,
-                        padding: "0.2rem 0.5rem",
-                        borderRadius: "4px",
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        display: "inline-block",
-                      }}
-                    >
-                      Short-Term Rental
-                    </span>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Duration
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      4 Weeks (28 Days)
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1.25rem",
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Start Date
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      Jan 15, 2024 - 09:00 AM
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      End Date
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      Feb 12, 2024 - 09:00 AM
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Status
-                    </p>
-                    <span
-                      style={{
-                        background: "#fef3c7",
-                        color: "#d97706",
-                        padding: "0.2rem 0.5rem",
-                        borderRadius: "4px",
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        display: "inline-block",
-                      }}
-                    >
-                      Pending Approval
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1.25rem",
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Primary Driver
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                        marginBottom: "0.25rem",
-                      }}
-                    >
-                      John Doe
-                    </p>
-                    <span
-                      style={{
-                        background: "#dcfce7",
-                        color: COLORS.SUCCESS_DARK,
-                        padding: "0.1rem 0.4rem",
-                        borderRadius: "4px",
-                        fontSize: "0.7rem",
-                        fontWeight: 600,
-                        display: "inline-block",
-                      }}
-                    >
-                      KYC Verified
-                    </span>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Vehicle Owner
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                        marginBottom: "0.25rem",
-                      }}
-                    >
-                      Sarah Johnson
-                    </p>
-                    <span
-                      style={{
-                        background: "#dcfce7",
-                        color: COLORS.SUCCESS_DARK,
-                        padding: "0.1rem 0.4rem",
-                        borderRadius: "4px",
-                        fontSize: "0.7rem",
-                        fontWeight: 600,
-                        display: "inline-block",
-                      }}
-                    >
-                      Active
-                    </span>
-                  </div>
+                <Field label="Owner" required>
+                  <select value={form.ownerId} onChange={(event) => updateForm({ ownerId: event.target.value })} style={inputStyle} disabled={loadingOptions}>
+                    <option value="">Select owner</option>
+                    {owners.map((owner) => (
+                      <option key={owner._id} value={owner._id}>
+                        {owner.name || owner.email} {owner.status ? `- ${owner.status}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <div style={{ marginTop: "0.75rem" }}>
+                  <InfoPanel>Owner can be selected directly, or filled from the selected vehicle owner.</InfoPanel>
                 </div>
               </div>
             </div>
-            {/* Commercial Terms Summary */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <FileText size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Commercial Terms Summary
-                </h3>
-              </div>
+          </Card>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "2rem",
-                }}
-              >
-                {/* Pricing Breakdown */}
-                <div>
-                  <h4
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 700,
-                      color: "#111827",
-                      marginBottom: "1rem",
-                    }}
-                  >
-                    Pricing Breakdown
-                  </h4>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.75rem",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <span style={{ fontSize: "0.85rem", color: "#6B7280" }}>
-                        Agreement Amount
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 500,
-                          color: "#111827",
-                        }}
-                      >
-                        $2,800.00
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <span style={{ fontSize: "0.85rem", color: "#6B7280" }}>
-                        Weekly Repayment
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 500,
-                          color: "#111827",
-                        }}
-                      >
-                        $700.00
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <span style={{ fontSize: "0.85rem", color: "#6B7280" }}>
-                        Fixed Fee
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 500,
-                          color: "#111827",
-                        }}
-                      >
-                        $50.00
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "1px",
-                        background: "#E5E7EB",
-                        margin: "0.25rem 0",
-                      }}
-                    ></div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 700,
-                          color: "#111827",
-                        }}
-                      >
-                        Total Due
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 700,
-                          color: "#111827",
-                        }}
-                      >
-                        $2,850.00
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Payment & Security */}
-                <div
-                  style={{
-                    background: "#F9FAFB",
-                    padding: "1.25rem",
-                    borderRadius: "8px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1rem",
-                  }}
-                >
-                  <h4
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: 700,
-                      color: "#111827",
-                    }}
-                  >
-                    Payment & Security
-                  </h4>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Deposit Amount
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      $500.00
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Payment Method
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      Credit Card
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Insurance Cover
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      Comprehensive Coverage
-                    </p>
-                  </div>
-                </div>
-              </div>
+          <Card style={{ borderRadius: "8px" }}>
+            <h3 style={sectionTitleStyle}><Car size={18} color={COLORS.PRIMARY_MAIN} /> Vehicle Assignment</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
+              <Field label="Vehicle" required>
+                <select value={form.vehicleId} onChange={(event) => onVehicleChange(event.target.value)} style={inputStyle} disabled={loadingOptions}>
+                  <option value="">Select vehicle</option>
+                  {vehicles.map((vehicle) => (
+                    <option key={vehicle._id} value={vehicle._id}>
+                      {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ")} - {vehicle.registration || "No plate"}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Mileage at Start">
+                <input type="number" value={form.mileageStart} onChange={(event) => updateForm({ mileageStart: event.target.value })} placeholder="Enter mileage" style={inputStyle} />
+              </Field>
             </div>
-            {/* Repayment Schedule */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-                marginTop: "1.5rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <Calendar size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Repayment Schedule
-                </h3>
-              </div>
+          </Card>
 
-              <div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1.5fr 1.5fr 1fr",
-                    paddingBottom: "0.75rem",
-                    borderBottom: "1px solid #E5E7EB",
-                    marginBottom: "0.75rem",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      color: "#9CA3AF",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Week
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      color: "#9CA3AF",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Due Date
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      color: "#9CA3AF",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Amount
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      color: "#9CA3AF",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Status
-                  </div>
-                </div>
+          <Card style={{ borderRadius: "8px" }}>
+            <h3 style={sectionTitleStyle}><DollarSign size={18} color={COLORS.PRIMARY_MAIN} /> Commercial Terms</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "0.75rem" }}>
+              <Field label="Agreement Amount" required>
+                <input type="number" value={form.amount} onChange={(event) => updateForm({ amount: event.target.value })} placeholder="0.00" style={inputStyle} />
+              </Field>
+              <Field label="Weekly Repayment">
+                <input type="number" value={form.repaymentAmount} onChange={(event) => updateForm({ repaymentAmount: event.target.value })} placeholder={weeks ? String(Math.round(parseMoney(form.amount) / weeks)) : "0.00"} style={inputStyle} />
+              </Field>
+              <Field label="Fixed Fee">
+                <input type="number" value={form.fixedFee} onChange={(event) => updateForm({ fixedFee: event.target.value })} placeholder="0.00" style={inputStyle} />
+              </Field>
+            </div>
+            <InfoPanel>Hybrid pricing is supported: repayment plus fixed final fee can be stored on the agreement.</InfoPanel>
+          </Card>
 
+          <Card style={{ borderRadius: "8px" }}>
+            <h3 style={sectionTitleStyle}><ShieldCheck size={18} color={COLORS.PRIMARY_MAIN} /> Deposit & Insurance</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", marginBottom: "1rem" }}>
+              <Field label="Deposit" required>
+                <input type="number" value={form.deposit} onChange={(event) => updateForm({ deposit: event.target.value })} placeholder="0.00" style={inputStyle} />
+              </Field>
+              <Field label="Preferred Payment Method" required>
+                <select value={form.paymentMethod} onChange={(event) => updateForm({ paymentMethod: event.target.value })} style={inputStyle}>
+                  <option>Credit Card</option>
+                  <option>Bank Transfer</option>
+                  <option>Cash</option>
+                </select>
+              </Field>
+              <Field label="Insurance Cover" required>
+                <select value={form.insuranceType} onChange={(event) => updateForm({ insuranceType: event.target.value })} style={inputStyle}>
+                  <option>Basic</option>
+                  <option>Comprehensive</option>
+                  <option>Premium</option>
+                </select>
+              </Field>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.82rem", color: COLORS.TEXT_MAIN, fontWeight: 700 }}>
+              <input type="checkbox" checked={form.overrideDeposits} onChange={(event) => updateForm({ overrideDeposits: event.target.checked })} />
+              Override default deposit rules for this agreement
+            </label>
+          </Card>
+
+          <Card style={{ borderRadius: "8px" }}>
+            <h3 style={sectionTitleStyle}><FileText size={18} color={COLORS.PRIMARY_MAIN} /> Internal Notes</h3>
+            <textarea value={form.internalNotes} onChange={(event) => updateForm({ internalNotes: event.target.value })} rows={4} placeholder="Add notes for audit or approval review..." style={{ ...inputStyle, height: "auto", padding: "0.75rem", resize: "vertical" }} />
+          </Card>
+
+          <div style={{ display: "flex", justifyContent: "space-between", paddingBottom: "1rem" }}>
+            <Button variant="outline" onClick={() => router.push("/rentals/agreements")}>
+              <ArrowLeft size={16} /> Cancel
+            </Button>
+            <Button onClick={() => {
+              const validationError = validate();
+              if (validationError) setError(validationError);
+              else {
+                setError(null);
+                setCurrentStep(2);
+              }
+            }}>
+              Review Agreement <ArrowRight size={16} />
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: "1rem" }}>
+            <Card style={{ borderRadius: "8px" }}>
+              <h3 style={sectionTitleStyle}><FileText size={18} color={COLORS.PRIMARY_MAIN} /> Agreement Preview</h3>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.9rem" }}>
                 {[
-                  { week: "Week 1", date: "Jan 22, 2024", amount: "$700.00" },
-                  { week: "Week 2", date: "Jan 29, 2024", amount: "$700.00" },
-                  { week: "Week 3", date: "Feb 05, 2024", amount: "$700.00" },
-                  { week: "Week 4", date: "Feb 12, 2024", amount: "$750.00" },
-                ].map((row, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1.5fr 1.5fr 1fr",
-                      padding: "0.75rem 0",
-                      borderBottom: index < 3 ? "1px solid #F3F4F6" : "none",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 600,
-                        color: "#111827",
-                      }}
-                    >
-                      {row.week}
-                    </div>
-                    <div style={{ fontSize: "0.85rem", color: "#6B7280" }}>
-                      {row.date}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      {row.amount}
-                    </div>
-                    <div>
-                      <span
-                        style={{
-                          background: "#fef3c7",
-                          color: "#d97706",
-                          padding: "0.2rem 0.5rem",
-                          borderRadius: "4px",
-                          fontSize: "0.7rem",
-                          fontWeight: 600,
-                          display: "inline-block",
-                        }}
-                      >
-                        Scheduled
-                      </span>
-                    </div>
+                  ["Title", form.title],
+                  ["Type", form.type],
+                  ["Driver", selectedDriver?.name || "--"],
+                  ["Owner", selectedOwner?.name || selectedOwner?.email || "--"],
+                  ["Vehicle", selectedVehicle ? [selectedVehicle.year, selectedVehicle.make, selectedVehicle.model].filter(Boolean).join(" ") : "--"],
+                  ["Registration", selectedVehicle?.registration || "--"],
+                  ["Start", formatDate(form.startDate)],
+                  ["End", formatDate(form.endDate)],
+                  ["Duration", `${weeks} week${weeks === 1 ? "" : "s"}`],
+                  ["Mileage", form.mileageStart || "--"],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <p style={{ color: COLORS.TEXT_MUTED, fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase", marginBottom: "0.2rem" }}>{label}</p>
+                    <p style={{ color: COLORS.TEXT_MAIN, fontSize: "0.85rem", fontWeight: 700 }}>{value}</p>
                   </div>
                 ))}
               </div>
-            </div>
-            {/* Vehicle Assignment Details */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-                marginTop: "1.5rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <Car size={18} style={{ color: COLORS.PRIMARY_MAIN }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Vehicle Assignment Details
-                </h3>
-              </div>
+            </Card>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "2rem",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1.25rem",
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#9CA3AF",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Vehicle
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      2022 Toyota Corolla
-                    </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <Card style={{ borderRadius: "8px" }}>
+                <h3 style={sectionTitleStyle}><DollarSign size={18} color={COLORS.PRIMARY_MAIN} /> Summary</h3>
+                {[
+                  ["Agreement Amount", formatMoney(form.amount)],
+                  ["Weekly Repayment", formatMoney(form.repaymentAmount || parseMoney(form.amount) / Math.max(weeks, 1))],
+                  ["Deposit", formatMoney(form.deposit)],
+                  ["Fixed Fee", formatMoney(form.fixedFee)],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "0.55rem 0", borderBottom: `1px solid ${COLORS.BORDER_MAIN}` }}>
+                    <span style={{ fontSize: "0.8rem", color: COLORS.TEXT_SECONDARY }}>{label}</span>
+                    <strong style={{ fontSize: "0.82rem" }}>{value}</strong>
                   </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#9CA3AF",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Registration
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      ABC-1234
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#9CA3AF",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Starting Mileage
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "0.85rem",
-                        fontWeight: 500,
-                        color: "#111827",
-                      }}
-                    >
-                      45,230 miles
-                    </p>
-                  </div>
+                ))}
+              </Card>
+
+              <Card style={{ borderRadius: "8px" }}>
+                <h3 style={sectionTitleStyle}><AlertTriangle size={18} color={COLORS.WARNING_MAIN} /> Validation</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                  <InfoPanel tone={selectedDriver?.kycStatus === "Verified" ? "success" : "warning"}>
+                    KYC status: {selectedDriver?.kycStatus || "Pending"}
+                  </InfoPanel>
+                  <InfoPanel tone={selectedVehicle?.isAvailable === false ? "warning" : "success"}>
+                    Vehicle availability: {selectedVehicle?.isAvailable === false ? "Unavailable" : "Available"}
+                  </InfoPanel>
+                  <InfoPanel tone="success">Owner and vehicle are linked for agreement creation.</InfoPanel>
                 </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "1.25rem",
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#9CA3AF",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Vehicle Status
-                    </p>
-                    <span
-                      style={{
-                        background: "#dcfce7",
-                        color: COLORS.SUCCESS_DARK,
-                        padding: "0.1rem 0.4rem",
-                        borderRadius: "4px",
-                        fontSize: "0.7rem",
-                        fontWeight: 600,
-                        display: "inline-block",
-                      }}
-                    >
-                      Available
-                    </span>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#9CA3AF",
-                        marginBottom: "0.25rem",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Insurance Status
-                    </p>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <span
-                        style={{
-                          background: "#dcfce7",
-                          color: COLORS.SUCCESS_DARK,
-                          padding: "0.1rem 0.4rem",
-                          borderRadius: "4px",
-                          fontSize: "0.7rem",
-                          fontWeight: 600,
-                          display: "inline-block",
-                        }}
-                      >
-                        Active
-                      </span>
-                      <span style={{ fontSize: "0.75rem", color: "#6B7280" }}>
-                        Expires: Dec 2024
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              </Card>
             </div>
-            {/* Conflict Detection & Validation */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-                marginTop: "1.5rem",
-                marginBottom: "1.5rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <AlertTriangle
-                  size={18}
-                  style={{ color: COLORS.WARNING_MAIN }}
-                />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Conflict Detection & Validation
-                </h3>
-              </div>
+          </div>
 
-              <div
-                style={{
-                  background: "#dcfce7",
-                  border: "1px solid #58bd7e",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                }}
-              >
-                <Clock size={18} style={{ color: COLORS.SUCCESS_DARK }} />
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                    color: COLORS.SUCCESS_DARK,
-                  }}
-                >
-                  <p style={{ fontWeight: 600 }}>KYC Compliance - Verified</p>
-                  <p>Driver KYC verification is complete and valid</p>
-                </span>
-              </div>
+          <Card style={{ borderRadius: "8px" }}>
+            <h3 style={sectionTitleStyle}><Calendar size={18} color={COLORS.PRIMARY_MAIN} /> Activation Requirements</h3>
+            <InfoPanel>
+              Activating creates the agreement record, marks the vehicle as booked, and schedules repayment rows for the selected duration.
+            </InfoPanel>
+          </Card>
 
-              <div
-                style={{
-                  background: "#dcfce7",
-                  border: "1px solid #58bd7e",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  marginTop: "1rem",
-                }}
-              >
-                <Clock size={18} style={{ color: COLORS.SUCCESS_DARK }} />
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                    color: COLORS.SUCCESS_DARK,
-                  }}
-                >
-                  <p style={{ fontWeight: 600 }}>
-                    Vehicle Availability - Confirmed
-                  </p>
-                  <p>No overlapping agreements found for this vehicle</p>
-                </span>
-              </div>
-
-              <div
-                style={{
-                  background: "#dcfce7",
-                  border: "1px solid #58bd7e",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  marginTop: "1rem",
-                }}
-              >
-                <Clock size={18} style={{ color: COLORS.SUCCESS_DARK }} />
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                    color: COLORS.SUCCESS_DARK,
-                  }}
-                >
-                  <p style={{ fontWeight: 600 }}>Owner Status - Active</p>
-                  <p>Vehicle owner account is active and compliant</p>
-                </span>
-              </div>
+          <div style={{ display: "flex", justifyContent: "space-between", paddingBottom: "1rem" }}>
+            <Button variant="outline" onClick={() => setCurrentStep(1)} disabled={saving}>
+              <ArrowLeft size={16} /> Back to Details
+            </Button>
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <Button variant="outline" onClick={() => submitAgreement("Draft")} disabled={saving}>
+                <FileText size={16} /> Save Draft
+              </Button>
+              <Button variant="warning" onClick={() => submitAgreement("Pending")} disabled={saving}>
+                <Clock size={16} /> Submit for Approval
+              </Button>
+              <Button variant="success" onClick={() => submitAgreement("Active")} disabled={saving}>
+                <Check size={16} /> Approve & Activate
+              </Button>
+              <Button variant="danger" onClick={() => router.push("/rentals/agreements")} disabled={saving}>
+                <X size={16} /> Cancel Agreement
+              </Button>
             </div>
-
-            {/* Approval History & Audit Trail */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-                marginTop: "1.5rem",
-                marginBottom: "1.5rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <AlertTriangle
-                  size={18}
-                  style={{ color: COLORS.WARNING_MAIN }}
-                />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Approval History & Audit Trail
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  background: "#f8fafc",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                }}
-              >
-                <div
-                  style={{
-                    width: "2rem",
-                    height: "2rem",
-                    borderRadius: "50%",
-                    backgroundColor: "#2563eb",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: COLORS.BG_CARD,
-                  }}
-                >
-                  <p>SA</p>
-                </div>
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  <p style={{ fontWeight: 600 }}>Agreement Created</p>
-                  <p>
-                    Agreement created by Super Admin with all required fields
-                    completed
-                  </p>
-                </span>
-              </div>
-
-              <div
-                style={{
-                  background: "#f8fafc",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  marginTop: "1rem",
-                }}
-              >
-                <div
-                  style={{
-                    width: "2rem",
-                    height: "2rem",
-                    borderRadius: "50%",
-                    backgroundColor: "#f59e0b",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: COLORS.BG_CARD,
-                  }}
-                >
-                  <Clock size={12} />
-                </div>
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  <p style={{ fontWeight: 600 }}>Pending Approval</p>
-                  <p>Waiting for final approval and activation</p>
-                </span>
-              </div>
-            </div>
-
-            {/* Linked Invoices & Transactions */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-                marginTop: "1.5rem",
-                marginBottom: "1.5rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <Link size={18} style={{ color: "#2563eb" }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Linked Invoices & Transactions
-                </h3>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  padding: "3rem",
-                }}
-              >
-                <Package size={30} style={{ color: "#555" }} />
-                <p style={{ fontSize: "0.95rem", fontWeight: "bold" }}>
-                  No Invoices or Transactions Yet
-                </p>
-                <p style={{ fontSize: "0.85rem", color: "#6B7280" }}>
-                  Invoices and transaction records will appear here once the
-                  agreement is activated
-                </p>
-              </div>
-            </div>
-
-            {/* Activation Requirements */}
-            <div
-              style={{
-                background: COLORS.BG_CARD,
-                padding: "1.5rem",
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-                marginTop: "1.5rem",
-                marginBottom: "1.5rem",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                <Power size={18} style={{ color: "#2563eb" }} />
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: 700,
-                    color: "#111827",
-                  }}
-                >
-                  Activation Requirements
-                </h3>
-              </div>
-
-              <div
-                style={{
-                  background: "#dcfce7",
-                  border: "1px solid #58bd7e",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  marginTop: "1rem",
-                }}
-              >
-                <Clock size={18} style={{ color: COLORS.SUCCESS_DARK }} />
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                    color: COLORS.SUCCESS_DARK,
-                  }}
-                >
-                  <p style={{ fontWeight: 600 }}>
-                    All validation checks passed
-                  </p>
-                </span>
-              </div>
-
-              <div
-                style={{
-                  background: "#e0f2fe",
-                  border: "1px solid #0ea5e9",
-                  borderRadius: "8px",
-                  padding: "1rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.75rem",
-                  marginTop: "1rem",
-                }}
-              >
-                <Info size={18} style={{ color: "#0ea5e9" }} />
-                <span
-                  style={{
-                    fontSize: "0.85rem",
-                    color: "#0ea5e9",
-                  }}
-                >
-                  <p style={{ fontWeight: 600 }}>Activation Notice</p>
-                  <p>
-                    Once activated, the agreement will be binding and payment
-                    schedules will be enforced. Driver will be notified
-                    immediately via email and SMS.
-                  </p>
-                </span>
-              </div>
-            </div>
-
-            <div
-              style={{
-                backgroundColor: "#E5E7EB",
-                width: "100%",
-                height: "1px",
-                marginTop: "1rem",
-              }}
-            />
-            {/* Bottom Buttons */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                width: "100%",
-                paddingBottom: "1rem",
-              }}
-            >
-              <div>
-                <button
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "6px",
-                    border: "1px solid #E5E7EB",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    background: COLORS.BG_CARD,
-                    cursor: "pointer",
-                  }}
-                  onClick={() => setCurrentStep(1)}
-                >
-                  <ArrowLeft size={16} />
-                  Back to Details
-                </button>
-              </div>
-
-              <div style={{ display: "flex", gap: "0.75rem" }}>
-                <button
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "6px",
-                    border: "1px solid #E5E7EB",
-                    background: COLORS.BG_CARD,
-                    display: "flex",
-                    alignItems: "center",
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    fontWeight: 500,
-                  }}
-                >
-                  Save Draft
-                </button>
-                <button
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "6px",
-                    border: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    color: COLORS.BG_CARD,
-                    backgroundColor: COLORS.WARNING_MAIN,
-                    cursor: "pointer",
-                  }}
-                >
-                  <Clock size={16} />
-                  Submit for Approval
-                </button>
-                <button
-                  onClick={() =>
-                    router.push("/rentals/agreements/AGR-2024-001")
-                  }
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "6px",
-                    border: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    color: COLORS.BG_CARD,
-                    backgroundColor: COLORS.SUCCESS_MAIN,
-                    cursor: "pointer",
-                  }}
-                >
-                  <Check size={16} />
-                  Approve & Activate
-                </button>
-                <button
-                  style={{
-                    padding: "0.5rem 1rem",
-                    borderRadius: "6px",
-                    border: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    color: COLORS.BG_CARD,
-                    backgroundColor: COLORS.ERROR_MAIN,
-                    cursor: "pointer",
-                  }}
-                >
-                  <X size={16} />
-                  Cancel Agreement
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

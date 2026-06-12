@@ -29,7 +29,6 @@ const menuItems = [
   { name: "Rentals", path: "/rentals", icon: Key, hasSub: true },
   { name: "Vehicles", path: "/vehicles", icon: Car },
   { name: "Owners", path: "/owners", icon: User, hasSub: true },
-  { name: "Agreements", path: "/agreements", icon: FileBox, hasSub: true },
   { name: "Finance", path: "/finance", icon: Wallet, hasSub: true },
   { name: "Promo Codes", path: "/promo-codes", icon: TicketPercent },
   { name: "Reports", path: "/reports", icon: BarChart2 },

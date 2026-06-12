@@ -170,13 +170,30 @@ export interface RentalsFilters {
 
 export interface Agreement {
   _id: string;
+  id?: string;
   agreementId?: string;
+  title?: string;
   driverName?: string;
+  driverEmail?: string;
+  driverId?: string;
+  ownerEmail?: string;
+  ownerId?: string;
   vehicleName?: string;
+  vehicle?: string;
+  vehicleRegistration?: string;
+  vehicleId?: string;
   agreementType?: string;
+  type?: string;
   status?: string;
   startDate?: string;
   endDate?: string;
+  amount?: number;
+  repaymentAmount?: number;
+  deposit?: number;
+  duration?: string;
+  source?: string;
+  bookingId?: string;
+  bookingNumber?: string;
   weeklyRate?: number;
   createdAt?: string;
 }
@@ -323,6 +340,10 @@ export const rentalsApi = {
       search?: string;
       status?: string;
       agreementType?: string;
+      type?: string;
+      searchVehicle?: string;
+      startDate?: string;
+      endDate?: string;
     } = {},
   ) => {
     const params = new URLSearchParams();
@@ -358,7 +379,15 @@ export const rentalsApi = {
   },
 
   getAgreementById: async (id: string) =>
-    apiFetch<ApiResponse<Agreement>>(`/admin/agreements/${id}`),
+    apiFetch<ApiResponse<{ agreement: Agreement; adminHistory?: Record<string, unknown>[] }>>(
+      `/admin/agreements/${id}`,
+    ),
+
+  getAgreementReview: async (id: string) =>
+    apiFetch<ApiResponse<Record<string, unknown>>>(`/admin/agreements/${id}/review`),
+
+  getAgreementDashboard: async (id: string) =>
+    apiFetch<ApiResponse<Record<string, unknown>>>(`/admin/agreements/${id}/dashboard`),
 
   getAgreementStats: async () => {
     const res = await apiFetch<ApiResponse<any>>("/admin/agreements?limit=1");
@@ -378,6 +407,24 @@ export const rentalsApi = {
     apiFetch<ApiResponse<Agreement>>(
       `/admin/agreements/${agreementId}/status`,
       { method: "PATCH", body: { status: "Active" } },
+    ),
+
+  updateAgreementStatus: async (agreementId: string, status: string) =>
+    apiFetch<ApiResponse<Agreement>>(
+      `/admin/agreements/${agreementId}/status`,
+      { method: "PATCH", body: { status } },
+    ),
+
+  suspendAgreement: async (agreementId: string) =>
+    apiFetch<ApiResponse<Agreement>>(
+      `/admin/agreements/${agreementId}/suspend`,
+      { method: "PATCH" },
+    ),
+
+  markAgreementPaymentPaid: async (agreementId: string, paymentId: string) =>
+    apiFetch<ApiResponse<Record<string, unknown>>>(
+      `/admin/agreements/${agreementId}/payments/${paymentId}/pay`,
+      { method: "PATCH" },
     ),
 
   getDisputes: async (
