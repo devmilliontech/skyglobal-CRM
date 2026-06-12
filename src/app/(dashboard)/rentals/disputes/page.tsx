@@ -1,159 +1,179 @@
 "use client";
-import { COLORS } from "@/constants/Constant";
 
-import React, { useState } from "react";
+import { COLORS } from "@/constants/Constant";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Search as SearchIcon,
-  Plus,
-  Bell,
-  ClipboardList,
   AlertTriangle,
-  RotateCcw,
+  ClipboardList,
   Clock,
-  Filter,
   Download,
-  MoreHorizontal,
-  ChevronRight,
   Eye,
   FileText,
+  Filter,
+  RotateCcw,
   User,
 } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import TabsNav from "@/components/TabsNav";
 import Breadcrumb from "@/components/Breadcrumb";
 import SelectField from "@/components/SelectField";
+import {
+  DisputeFilters,
+  DisputeListCase,
+  disputesApi,
+} from "@/services/api/disputes";
+
+const tabs = [
+  { name: "Rentals Management", path: "/rentals" },
+  { name: "Agreements", path: "/rentals/agreements" },
+  { name: "Disputes & Refunds", path: "/rentals/disputes" },
+  { name: "Admin Notes & Audit", path: "/rentals/audit" },
+];
+
+const inputStyle: React.CSSProperties = {
+  padding: "0.6rem 0.75rem",
+  borderRadius: "8px",
+  border: "1px solid #E5E7EB",
+  fontSize: "0.85rem",
+  width: "100%",
+  outline: "none",
+  background: "#fff",
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: "0.85rem",
+  color: "#374151",
+  fontWeight: 500,
+  marginBottom: "0.35rem",
+  display: "block",
+};
+
+const money = (value?: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(Number(value || 0));
+
+const formatAge = (createdAt?: string) => {
+  if (!createdAt) return "--";
+  const hours = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(createdAt).getTime()) / 36e5),
+  );
+  return `${hours} hrs`;
+};
+
+const statusColors: Record<string, { bg: string; text: string }> = {
+  Escalated: { bg: COLORS.ERROR_LIGHT, text: COLORS.ERROR_MAIN },
+  "Under Review": { bg: COLORS.WARNING_LIGHT, text: COLORS.WARNING_MAIN },
+  "Pending Evidence": { bg: COLORS.INFO_LIGHT, text: COLORS.PRIMARY_MAIN },
+  New: { bg: "#F3F4F6", text: "#4B5563" },
+  Open: { bg: "#F3F4F6", text: "#4B5563" },
+  Resolved: { bg: COLORS.SUCCESS_LIGHT, text: COLORS.SUCCESS_DARK },
+  Closed: { bg: "#E5E7EB", text: "#374151" },
+};
 
 export default function DisputesAndRefunds() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Disputes & Refunds");
   const [subTab, setSubTab] = useState("Disputes");
+  const [cases, setCases] = useState<DisputeListCase[]>([]);
+  const [stats, setStats] = useState({
+    totalCases: 0,
+    activeDisputes: 0,
+    refundRequests: 0,
+    slaCritical: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filters, setFilters] = useState<DisputeFilters>({ limit: 20 });
+  const [draftFilters, setDraftFilters] = useState<DisputeFilters>({ limit: 20 });
 
-  const tabs = [
-    { name: "Rentals Management", path: "/rentals" },
-    { name: "Agreements", path: "/rentals/agreements" },
-    { name: "Disputes & Refunds", path: "/rentals/disputes" },
-    { name: "Admin Notes & Audit", path: "/rentals/audit" },
-  ];
+  const effectiveFilters = useMemo(() => {
+    const next: DisputeFilters = { ...filters };
+    if (subTab === "Disputes") next.type = "Dispute";
+    if (subTab === "Refunds") next.type = "Refund";
+    if (subTab === "Resolved") {
+      delete next.type;
+      next.status = "Resolved,Closed";
+    }
+    return next;
+  }, [filters, subTab]);
+
+  const loadDisputes = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await disputesApi.getDisputes(effectiveFilters);
+      setCases(res.data.cases || []);
+      setStats(
+        res.data.stats || {
+          totalCases: 0,
+          activeDisputes: 0,
+          refundRequests: 0,
+          slaCritical: 0,
+        },
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load disputes");
+      setCases([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [effectiveFilters]);
+
+  useEffect(() => {
+    loadDisputes();
+  }, [loadDisputes]);
 
   const topStats = [
     {
       title: "Total Cases",
-      value: "47",
+      value: stats.totalCases,
       badge: "All disputes & refunds",
       icon: <ClipboardList size={20} color="#6B7280" />,
       valueColor: "#111827",
     },
     {
       title: "Active Disputes",
-      value: "18",
+      value: stats.activeDisputes,
       badge: "Pending resolution",
       icon: <AlertTriangle size={20} color={COLORS.WARNING_MAIN} />,
       valueColor: COLORS.WARNING_MAIN,
     },
     {
       title: "Refund Requests",
-      value: "12",
+      value: stats.refundRequests,
       badge: "Awaiting approval",
       icon: <RotateCcw size={20} color={COLORS.PRIMARY_MAIN} />,
       valueColor: COLORS.PRIMARY_MAIN,
     },
     {
       title: "SLA Critical",
-      value: "5",
+      value: stats.slaCritical,
       badge: "Exceeding 48 hours",
       icon: <Clock size={20} color={COLORS.ERROR_MAIN} />,
       valueColor: COLORS.ERROR_MAIN,
     },
   ];
 
-  const casesData = [
-    {
-      id: "DSP-2024-018",
-      type: "Dispute",
-      rentalId: "RNT-2024-145",
-      driver: "John Doe",
-      owner: "Fleet Owner A",
-      vehicle: "ABC-1234",
-      amount: "$1,250.00",
-      ageHours: "52 hrs",
-      slaStatus: "Critical",
-      status: "Escalated",
-    },
-    {
-      id: "DSP-2024-017",
-      type: "Dispute",
-      rentalId: "AGR-2024-089",
-      driver: "Sarah Smith",
-      owner: "Fleet Owner B",
-      vehicle: "XYZ-5678",
-      amount: "$850.00",
-      ageHours: "28 hrs",
-      slaStatus: "Normal",
-      status: "Under Review",
-    },
-    {
-      id: "DSP-2024-016",
-      type: "Dispute",
-      rentalId: "RNT-2024-132",
-      driver: "Mike Johnson",
-      owner: "Fleet Owner C",
-      vehicle: "DEF-9012",
-      amount: "$2,100.00",
-      ageHours: "8 hrs",
-      slaStatus: "New",
-      status: "Pending Evidence",
-    },
-    {
-      id: "DSP-2024-015",
-      type: "Dispute",
-      rentalId: "AGR-2024-076",
-      driver: "Emma Davis",
-      owner: "Fleet Owner A",
-      vehicle: "GHI-3456",
-      amount: "$950.00",
-      ageHours: "65 hrs",
-      slaStatus: "Critical",
-      status: "Escalated",
-    },
-  ];
-
-  const inputStyle = {
-    padding: "0.6rem 0.75rem",
-    borderRadius: "8px",
-    border: "1px solid #E5E7EB",
-    fontSize: "0.85rem",
-    width: "100%",
-    outline: "none",
-    background: "#F9FAFB",
+  const updateDraft = (key: keyof DisputeFilters, value: string) => {
+    setDraftFilters((current) => ({ ...current, [key]: value }));
   };
 
-  const labelStyle = {
-    fontSize: "0.75rem",
-    fontWeight: 600,
-    color: "#6B7280",
-    marginBottom: "0.4rem",
-    display: "block",
-  };
+  const applyFilters = () => setFilters({ ...draftFilters, limit: 20, page: 1 });
 
-  const statusColors: any = {
-    Escalated: { bg: COLORS.ERROR_LIGHT, text: COLORS.ERROR_MAIN },
-    "Under Review": { bg: "#FEF3C7", text: COLORS.WARNING_MAIN },
-    "Pending Evidence": { bg: COLORS.INFO_LIGHT, text: COLORS.PRIMARY_MAIN },
+  const resetFilters = () => {
+    const next = { limit: 20, page: 1 };
+    setDraftFilters(next);
+    setFilters(next);
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "1.5rem",
-      }}
-    >
-      {/* Header section */}
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <PageHeader title="Disputes & Refunds" />
       <TabsNav tabs={tabs} activeTab={activeTab} setActiveTab={setActiveTab} />
-
       <Breadcrumb
         items={[
           { label: "Dashboard", path: "/" },
@@ -162,307 +182,184 @@ export default function DisputesAndRefunds() {
         ]}
       />
 
-      <div
-        style={{
-          width: "100%",
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: "1.5rem",
-        }}
-      >
-        {/* Stats Section */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: "1rem",
-          }}
-        >
-          {topStats.map((stat, i) => (
-            <div
-              key={i}
-              className="card"
-              style={{
-                padding: "1.25rem",
-                display: "flex",
-                flexDirection: "column",
-                gap: "1rem",
-                background: COLORS.BG_CARD,
-                borderRadius: "12px",
-                border: "1px solid #E5E7EB",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                }}
-              >
-                <div>
-                  <p
-                    style={{
-                      fontSize: "0.85rem",
-                      color: "#4B5563",
-                      fontWeight: 500,
-                      marginBottom: "0.75rem",
-                    }}
-                  >
-                    {stat.title}
-                  </p>
-                  <p
-                    style={{
-                      fontSize: "1.75rem",
-                      fontWeight: 800,
-                      color: stat.valueColor,
-                      lineHeight: 1,
-                    }}
-                  >
-                    {stat.value}
-                  </p>
-                </div>
-                <div>{stat.icon}</div>
-              </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "1rem" }}>
+        {topStats.map((stat) => (
+          <div
+            key={stat.title}
+            style={{
+              padding: "1.25rem",
+              background: COLORS.BG_CARD,
+              borderRadius: "8px",
+              border: "1px solid #E5E7EB",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
               <div>
+                <p style={{ fontSize: "0.85rem", color: "#4B5563", fontWeight: 500 }}>
+                  {stat.title}
+                </p>
                 <p
                   style={{
-                    fontSize: "0.75rem",
-                    color: "#6B7280",
-                    fontWeight: 500,
+                    fontSize: "1.75rem",
+                    fontWeight: 800,
+                    color: stat.valueColor,
+                    marginTop: "0.75rem",
                   }}
                 >
-                  {stat.badge}
+                  {stat.value}
                 </p>
               </div>
+              {stat.icon}
             </div>
+            <p style={{ fontSize: "0.75rem", color: "#6B7280", marginTop: "0.75rem" }}>
+              {stat.badge}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+          {[
+            ["Disputes", stats.activeDisputes],
+            ["Refunds", stats.refundRequests],
+            ["Resolved", Math.max(0, stats.totalCases - stats.activeDisputes - stats.refundRequests)],
+          ].map(([name, count]) => (
+            <button
+              key={String(name)}
+              onClick={() => setSubTab(String(name))}
+              style={{
+                padding: "0.5rem 0",
+                fontSize: "0.9rem",
+                fontWeight: 600,
+                color: subTab === name ? COLORS.PRIMARY_MAIN : "#6B7280",
+                borderBottom:
+                  subTab === name
+                    ? `2px solid ${COLORS.PRIMARY_MAIN}`
+                    : "2px solid transparent",
+                background: "transparent",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+              }}
+            >
+              {name}
+              <span
+                style={{
+                  background: subTab === name ? COLORS.PRIMARY_LIGHT : "#F3F4F6",
+                  color: subTab === name ? COLORS.PRIMARY_MAIN : "#6B7280",
+                  padding: "2px 8px",
+                  borderRadius: "12px",
+                  fontSize: "0.7rem",
+                }}
+              >
+                {count}
+              </span>
+            </button>
           ))}
         </div>
 
-        {/* Filters and Sub-tabs */}
         <div
           style={{
-            background: "none",
+            background: COLORS.BG_CARD,
+            borderRadius: "8px",
+            border: "1px solid #E5E7EB",
+            padding: "1.25rem",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              gap: "1rem",
-              marginBottom: "1rem",
-              alignItems: "center",
-            }}
-          >
-            <button
-              onClick={() => setSubTab("Disputes")}
-              style={{
-                padding: "0.5rem 0",
-                fontSize: "0.9rem",
-                fontWeight: 600,
-                color: subTab === "Disputes" ? "#2563EB" : "#6B7280",
-                borderBottom:
-                  subTab === "Disputes"
-                    ? "2px solid #2563EB"
-                    : "2px solid transparent",
-                background: "transparent",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-              }}
-            >
-              Disputes{" "}
-              <span
-                style={{
-                  background: subTab === "Disputes" ? "#DBEAFE" : "#F3F4F6",
-                  color: subTab === "Disputes" ? "#2563EB" : "#6B7280",
-                  padding: "2px 8px",
-                  borderRadius: "12px",
-                  fontSize: "0.7rem",
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(140px, 1fr))", gap: "1rem" }}>
+            <div>
+              <label style={labelStyle}>Rental/Agreement ID</label>
+              <input
+                value={draftFilters.rentalId || draftFilters.agreementId || ""}
+                onChange={(event) => {
+                  updateDraft("rentalId", event.target.value);
+                  updateDraft("agreementId", event.target.value);
                 }}
-              >
-                18
-              </span>
-            </button>
-            <button
-              onClick={() => setSubTab("Refunds")}
-              style={{
-                padding: "0.5rem 0",
-                fontSize: "0.9rem",
-                fontWeight: 600,
-                color: subTab === "Refunds" ? "#2563EB" : "#6B7280",
-                borderBottom:
-                  subTab === "Refunds"
-                    ? "2px solid #2563EB"
-                    : "2px solid transparent",
-                background: "transparent",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-              }}
-            >
-              Refunds{" "}
-              <span
-                style={{
-                  background: subTab === "Refunds" ? "#DBEAFE" : "#F3F4F6",
-                  color: subTab === "Refunds" ? "#2563EB" : "#6B7280",
-                  padding: "2px 8px",
-                  borderRadius: "12px",
-                  fontSize: "0.7rem",
-                }}
-              >
-                12
-              </span>
-            </button>
-            <button
-              onClick={() => setSubTab("Resolved")}
-              style={{
-                padding: "0.5rem 0",
-                fontSize: "0.9rem",
-                fontWeight: 600,
-                color: subTab === "Resolved" ? "#2563EB" : "#6B7280",
-                borderBottom:
-                  subTab === "Resolved"
-                    ? "2px solid #2563EB"
-                    : "2px solid transparent",
-                background: "transparent",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-              }}
-            >
-              Resolved{" "}
-              <span
-                style={{
-                  background: subTab === "Resolved" ? "#DBEAFE" : "#F3F4F6",
-                  color: subTab === "Resolved" ? "#2563EB" : "#6B7280",
-                  padding: "2px 8px",
-                  borderRadius: "12px",
-                  fontSize: "0.7rem",
-                }}
-              >
-                17
-              </span>
-            </button>
+                type="text"
+                placeholder="Search ID..."
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Driver</label>
+              <input
+                value={draftFilters.driverName || ""}
+                onChange={(event) => updateDraft("driverName", event.target.value)}
+                type="text"
+                placeholder="Driver name..."
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Owner</label>
+              <input
+                value={draftFilters.ownerName || ""}
+                onChange={(event) => updateDraft("ownerName", event.target.value)}
+                type="text"
+                placeholder="Owner name..."
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Vehicle</label>
+              <input
+                value={draftFilters.vehicleReg || ""}
+                onChange={(event) => updateDraft("vehicleReg", event.target.value)}
+                type="text"
+                placeholder="Reg. number..."
+                style={inputStyle}
+              />
+            </div>
+            <SelectField
+              label="Status"
+              placeholder="All Status"
+              value={draftFilters.status || ""}
+              onChange={(event) => updateDraft("status", event.target.value)}
+              options={[
+                { label: "New", value: "New" },
+                { label: "Under Review", value: "Under Review" },
+                { label: "Pending Evidence", value: "Pending Evidence" },
+                { label: "Escalated", value: "Escalated" },
+                { label: "Resolved", value: "Resolved" },
+                { label: "Closed", value: "Closed" },
+              ]}
+            />
+            <div>
+              <label style={labelStyle}>Start Date</label>
+              <input
+                value={draftFilters.startDate || ""}
+                onChange={(event) => updateDraft("startDate", event.target.value)}
+                type="date"
+                style={inputStyle}
+              />
+            </div>
           </div>
 
-          <div
-            style={{
-              background: COLORS.BG_CARD,
-              borderRadius: "12px",
-              border: "1px solid #E5E7EB",
-              padding: "1.25rem",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                gap: "1rem",
-                alignItems: "flex-end",
-                flexWrap: "wrap",
-                justifyContent: "space-between",
-              }}
-            >
-              <div style={{ display: "flex", gap: "1rem", flex: 1 }}>
-                <div style={{ flex: 1, minWidth: "150px" }}>
-                  <label style={labelStyle}>Rental/Agreement ID</label>
-                  <input
-                    type="text"
-                    placeholder="Search ID..."
-                    style={inputStyle}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: "150px" }}>
-                  <SelectField
-                    label="All Drivers"
-                    options={[
-                      { label: "All Drivers", value: "All Drivers" },
-                      { label: "John Doe", value: "John Doe" },
-                      { label: "Sarah Smith", value: "Sarah Smith" },
-                    ]}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: "150px" }}>
-                  <SelectField
-                    label="All Owners"
-                    options={[
-                      { label: "All Owners", value: "All Owners" },
-                      { label: "Fleet Owner A", value: "Fleet Owner A" },
-                      { label: "Fleet Owner B", value: "Fleet Owner B" },
-                    ]}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: "150px" }}>
-                  <label style={labelStyle}>Vehicle</label>
-                  <input
-                    type="text"
-                    placeholder="Reg. number..."
-                    style={inputStyle}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: "150px" }}>
-                  <SelectField
-                    label="All Status"
-                    options={[
-                      { label: "New", value: "New" },
-                      { label: "Under Review", value: "Under Review" },
-                      { label: "Pending Evidence", value: "Pending Evidence" },
-                      { label: "Escalated", value: "Escalated" },
-                    ]}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: "150px" }}>
-                  <label style={labelStyle}>Date Range</label>
-                  <input type="date" style={inputStyle} />
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginTop: "1rem",
-              }}
-            >
-              <div style={{ display: "flex", gap: "0.75rem" }}>
-                <button
-                  style={{
-                    background: COLORS.PRIMARY_MAIN,
-                    color: COLORS.BG_CARD,
-                    padding: "0.5rem 1rem",
-                    borderRadius: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  <Filter size={16} />
-                  <span>Apply Filters</span>
-                </button>
-                <button
-                  style={{
-                    background: COLORS.BG_CARD,
-                    color: "#6B7280",
-                    border: "1px solid #E5E7EB",
-                    padding: "0.5rem 1rem",
-                    borderRadius: "8px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  <RotateCcw size={16} />
-                  <span>Reset</span>
-                </button>
-              </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "1rem" }}>
+            <div style={{ display: "flex", gap: "0.75rem" }}>
               <button
+                onClick={applyFilters}
+                style={{
+                  background: COLORS.PRIMARY_MAIN,
+                  color: COLORS.BG_CARD,
+                  padding: "0.5rem 1rem",
+                  borderRadius: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  fontWeight: 600,
+                  fontSize: "0.85rem",
+                }}
+              >
+                <Filter size={16} />
+                <span>Apply Filters</span>
+              </button>
+              <button
+                onClick={resetFilters}
                 style={{
                   background: COLORS.BG_CARD,
-                  color: "#4B5563",
+                  color: "#6B7280",
                   border: "1px solid #E5E7EB",
                   padding: "0.5rem 1rem",
                   borderRadius: "8px",
@@ -473,214 +370,158 @@ export default function DisputesAndRefunds() {
                   fontSize: "0.85rem",
                 }}
               >
-                <Download size={16} />
-                <span>Export Cases</span>
+                <RotateCcw size={16} />
+                <span>Reset</span>
               </button>
             </div>
+            <button
+              onClick={() => window.print()}
+              style={{
+                background: COLORS.BG_CARD,
+                color: "#4B5563",
+                border: "1px solid #E5E7EB",
+                padding: "0.5rem 1rem",
+                borderRadius: "8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                fontWeight: 600,
+                fontSize: "0.85rem",
+              }}
+            >
+              <Download size={16} />
+              <span>Export Cases</span>
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Table Section */}
-        <div
-          className="card"
-          style={{
-            padding: "0",
-            overflow: "hidden",
-            background: COLORS.BG_CARD,
-            borderRadius: "12px",
-            border: "1px solid #E5E7EB",
-          }}
-        >
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr
-                  style={{
-                    background: "#F9FAFB",
-                    borderBottom: "1px solid #E5E7EB",
-                  }}
-                >
-                  {[
-                    "CASE ID",
-                    "TYPE",
-                    "RENTAL/AGREEMENT",
-                    "DRIVER",
-                    "OWNER",
-                    "VEHICLE",
-                    "AMOUNT",
-                    "AGE/SLA",
-                    "STATUS",
-                    "ACTIONS",
-                  ].map((header) => (
-                    <th
-                      key={header}
-                      style={{
-                        padding: "1rem 1.5rem",
-                        textAlign: "left",
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        color: "#6B7280",
-                      }}
-                    >
-                      {header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {casesData.map((caseItem, i) => (
-                  <tr
-                    key={i}
-                    onClick={() =>
-                      router.push(`/rentals/disputes/${caseItem.id}`)
-                    }
+      {error && (
+        <div style={{ color: COLORS.ERROR_MAIN, fontSize: "0.9rem", fontWeight: 600 }}>
+          {error}
+        </div>
+      )}
+
+      <div
+        style={{
+          padding: "0",
+          overflow: "hidden",
+          background: COLORS.BG_CARD,
+          borderRadius: "8px",
+          border: "1px solid #E5E7EB",
+        }}
+      >
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#F9FAFB", borderBottom: "1px solid #E5E7EB" }}>
+                {[
+                  "CASE ID",
+                  "TYPE",
+                  "RENTAL/AGREEMENT",
+                  "DRIVER",
+                  "OWNER",
+                  "VEHICLE",
+                  "AMOUNT",
+                  "AGE/SLA",
+                  "STATUS",
+                  "ACTIONS",
+                ].map((header) => (
+                  <th
+                    key={header}
                     style={{
-                      borderBottom: "1px solid #E5E7EB",
-                      cursor: "pointer",
+                      padding: "1rem 1.5rem",
+                      textAlign: "left",
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      color: "#6B7280",
+                      whiteSpace: "nowrap",
                     }}
-                    onMouseOver={(e) =>
-                      (e.currentTarget.style.backgroundColor = "#F9FAFB")
-                    }
-                    onMouseOut={(e) =>
-                      (e.currentTarget.style.backgroundColor = "transparent")
-                    }
                   >
-                    <td
-                      style={{
-                        padding: "1.25rem 1.5rem",
-                        fontSize: "0.85rem",
-                        fontWeight: 600,
-                        color: COLORS.PRIMARY_MAIN,
-                      }}
-                    >
-                      {caseItem.id}
-                    </td>
-                    <td style={{ padding: "1.25rem 1.5rem" }}>
-                      <span
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "0.7rem",
-                          fontWeight: 600,
-                          backgroundColor: "#FEF3C7",
-                          color: "#D97706",
-                        }}
-                      >
-                        {caseItem.type}
-                      </span>
-                    </td>
-                    <td
-                      style={{
-                        padding: "1.25rem 1.5rem",
-                        fontSize: "0.85rem",
-                        color: "#111827",
-                      }}
-                    >
-                      {caseItem.rentalId}
-                    </td>
-                    <td
-                      style={{
-                        padding: "1.25rem 1.5rem",
-                        fontSize: "0.85rem",
-                        color: "#111827",
-                      }}
-                    >
-                      {caseItem.driver}
-                    </td>
-                    <td
-                      style={{
-                        padding: "1.25rem 1.5rem",
-                        fontSize: "0.85rem",
-                        color: "#6B7280",
-                      }}
-                    >
-                      {caseItem.owner}
-                    </td>
-                    <td
-                      style={{
-                        padding: "1.25rem 1.5rem",
-                        fontSize: "0.85rem",
-                        color: "#6B7280",
-                      }}
-                    >
-                      {caseItem.vehicle}
-                    </td>
-                    <td
-                      style={{
-                        padding: "1.25rem 1.5rem",
-                        fontSize: "0.85rem",
-                        fontWeight: 600,
-                        color: "#111827",
-                      }}
-                    >
-                      {caseItem.amount}
-                    </td>
-                    <td style={{ padding: "1.25rem 1.5rem" }}>
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span
-                          style={{
-                            fontSize: "0.85rem",
-                            color:
-                              caseItem.slaStatus === "Critical"
-                                ? "#EF4444"
-                                : "#D97706",
-                          }}
-                        >
-                          {caseItem.ageHours}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "0.7rem",
-                            color:
-                              caseItem.slaStatus === "Critical"
-                                ? "#EF4444"
-                                : "#6B7280",
-                          }}
-                        >
-                          {caseItem.slaStatus}
-                        </span>
-                      </div>
-                    </td>
-                    <td style={{ padding: "1.25rem 1.5rem" }}>
-                      <span
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: "12px",
-                          fontSize: "0.7rem",
-                          fontWeight: 600,
-                          backgroundColor:
-                            statusColors[caseItem.status]?.bg || "#F3F4F6",
-                          color:
-                            statusColors[caseItem.status]?.text || "#6B7280",
-                        }}
-                      >
-                        {caseItem.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: "1.25rem 1.5rem" }}>
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <Eye
-                          size={16}
-                          color={COLORS.PRIMARY_MAIN}
-                          style={{ cursor: "pointer" }}
-                        />
-                        <FileText
-                          size={16}
-                          color={COLORS.SUCCESS_MAIN}
-                          style={{ cursor: "pointer" }}
-                        />
-                        <User
-                          size={16}
-                          color={COLORS.SUCCESS_MAIN}
-                          style={{ cursor: "pointer" }}
-                        />
-                      </div>
-                    </td>
-                  </tr>
+                    {header}
+                  </th>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={10} style={{ padding: "2rem", color: "#6B7280" }}>
+                    Loading disputes...
+                  </td>
+                </tr>
+              ) : cases.length === 0 ? (
+                <tr>
+                  <td colSpan={10} style={{ padding: "2rem", color: "#6B7280" }}>
+                    No dispute cases found.
+                  </td>
+                </tr>
+              ) : (
+                cases.map((caseItem) => {
+                  const colors = statusColors[caseItem.status] || statusColors.New;
+                  return (
+                    <tr
+                      key={caseItem._id}
+                      onClick={() => router.push(`/rentals/disputes/${caseItem.caseId}`)}
+                      style={{ borderBottom: "1px solid #E5E7EB", cursor: "pointer" }}
+                      onMouseOver={(event) => {
+                        event.currentTarget.style.backgroundColor = "#F9FAFB";
+                      }}
+                      onMouseOut={(event) => {
+                        event.currentTarget.style.backgroundColor = "transparent";
+                      }}
+                    >
+                      <td style={{ padding: "1.25rem 1.5rem", fontSize: "0.85rem", fontWeight: 600, color: COLORS.PRIMARY_MAIN }}>
+                        {caseItem.caseId}
+                      </td>
+                      <td style={{ padding: "1.25rem 1.5rem" }}>
+                        <span style={{ padding: "4px 8px", borderRadius: "4px", fontSize: "0.7rem", fontWeight: 600, backgroundColor: "#FEF3C7", color: "#D97706" }}>
+                          {caseItem.type}
+                        </span>
+                      </td>
+                      <td style={{ padding: "1.25rem 1.5rem", fontSize: "0.85rem", color: "#111827" }}>
+                        {caseItem.rental?.rentalId || caseItem.agreement?.agreementId || "--"}
+                      </td>
+                      <td style={{ padding: "1.25rem 1.5rem", fontSize: "0.85rem", color: "#111827" }}>
+                        {caseItem.driver?.name || "--"}
+                      </td>
+                      <td style={{ padding: "1.25rem 1.5rem", fontSize: "0.85rem", color: "#6B7280" }}>
+                        {caseItem.owner?.email || "--"}
+                      </td>
+                      <td style={{ padding: "1.25rem 1.5rem", fontSize: "0.85rem", color: "#6B7280" }}>
+                        {caseItem.rental?.vehicleRegistration || caseItem.rental?.vehicleName || "--"}
+                      </td>
+                      <td style={{ padding: "1.25rem 1.5rem", fontSize: "0.85rem", fontWeight: 600, color: "#111827" }}>
+                        {money(caseItem.disputedAmount)}
+                      </td>
+                      <td style={{ padding: "1.25rem 1.5rem" }}>
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontSize: "0.85rem", color: caseItem.isSlaCritical ? COLORS.ERROR_MAIN : "#D97706" }}>
+                            {formatAge(caseItem.createdAt)}
+                          </span>
+                          <span style={{ fontSize: "0.7rem", color: caseItem.isSlaCritical ? COLORS.ERROR_MAIN : "#6B7280" }}>
+                            {caseItem.isSlaCritical ? "Critical" : "Normal"}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ padding: "1.25rem 1.5rem" }}>
+                        <span style={{ padding: "4px 10px", borderRadius: "12px", fontSize: "0.7rem", fontWeight: 600, backgroundColor: colors.bg, color: colors.text }}>
+                          {caseItem.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: "1.25rem 1.5rem" }}>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <Eye size={16} color={COLORS.PRIMARY_MAIN} />
+                          <FileText size={16} color={COLORS.SUCCESS_MAIN} />
+                          <User size={16} color={COLORS.SUCCESS_MAIN} />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
