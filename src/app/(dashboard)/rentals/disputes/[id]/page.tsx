@@ -214,6 +214,8 @@ export default function CaseDetails() {
     "--";
   const agreementDisplayId =
     typeof agreement.agreementId === "string" ? agreement.agreementId : "--";
+  const evidenceAttachments = caseDetails.evidenceAttachments || [];
+  const internalNotes = caseDetails.internalNotes || [];
 
   const timeline = useMemo(() => {
     const activityItems = ((data?.timelineOfEvents || []) as TimelineRecord[]).map((item) => ({
@@ -456,10 +458,10 @@ export default function CaseDetails() {
           }
         >
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            {(caseDetails.evidenceAttachments || []).length === 0 ? (
+            {evidenceAttachments.length === 0 ? (
               <p style={{ color: "#6B7280", fontSize: "0.85rem" }}>No evidence uploaded yet.</p>
             ) : (
-              caseDetails.evidenceAttachments.map((file, index) => (
+              evidenceAttachments.map((file, index) => (
                 <EvidenceItem
                   key={`${file.fileUrl}-${index}`}
                   icon={String(file.fileName || "").match(/\.(png|jpg|jpeg|webp)$/i) ? Image : FileText}
@@ -476,12 +478,12 @@ export default function CaseDetails() {
 
         <DetailCard title="Internal Communications">
           <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            {(caseDetails.internalNotes || []).map((item, index) => (
+            {internalNotes.map((item, index) => (
               <NoteItem
                 key={`${item.createdAt}-${index}`}
                 avatar={avatar}
                 name={item.adminId?.email || "Admin"}
-                note={item.note}
+                note={item.note || ""}
                 time={formatDateTime(item.createdAt)}
               />
             ))}

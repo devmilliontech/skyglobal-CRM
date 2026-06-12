@@ -233,7 +233,12 @@ export const rentalsApi = {
   getRentals: async (filters: RentalsFilters = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {
-      if (v !== undefined && v !== "" && !String(v).startsWith("All")) {
+      const normalized = String(v || "").trim().toLowerCase();
+      const isPlaceholder =
+        normalized.startsWith("all ") ||
+        normalized === "agreement type";
+
+      if (v !== undefined && v !== "" && !isPlaceholder) {
         params.set(k, String(v));
       }
     });

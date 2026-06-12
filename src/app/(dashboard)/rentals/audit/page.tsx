@@ -1,7 +1,8 @@
 "use client";
 import { COLORS } from "@/constants/Constant";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { auditApi, AuditLogEntry, AuditLogStat } from "@/services/api/audit";
 import {
   FileText,
   ShieldCheck,
@@ -39,41 +40,65 @@ export default function AdminNotesAudit() {
     { name: "Admin Notes & Audit", path: "/rentals/audit" },
   ];
 
-  const summaryStats = [
-    { label: "Total Entries", value: "1,847", color: "#111827" },
-    { label: "Last 24 Hours", value: "23", color: COLORS.PRIMARY_MAIN },
-    { label: "Manual Notes", value: "156", color: COLORS.WARNING_MAIN },
-    { label: "System Events", value: "1,691", color: COLORS.SUCCESS_MAIN },
-  ];
+  const [stats, setStats] = useState<AuditLogStat | null>(null);
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [entityType, setEntityType] = useState("Select Type");
+  const [entityId, setEntityId] = useState("");
+  const [noteContent, setNoteContent] = useState("");
+  const [formLoading, setFormLoading] = useState(false);
 
-  const auditData = [
-    {
-      timestamp: "2024-04-21 08:30:15",
-      entityType: "Rental",
-      entityId: "REN-2024-001",
-      actionType: "Manual Note",
-      adminUser: "John Admin",
-      description: "Added internal note regarding late return penalty waiver.",
-      outcome: "Success",
-    },
-    {
-      timestamp: "2024-04-21 07:45:22",
-      entityType: "Agreement",
-      entityId: "AGR-2024-055",
-      actionType: "Status Change",
-      adminUser: "Sarah Manager",
-      description: "Approved extension for agreement duration.",
-      outcome: "Success",
-    },
-    {
-      timestamp: "2024-04-21 06:12:05",
-      entityType: "Dispute",
-      entityId: "DISP-2024-012",
-      actionType: "System Event",
-      adminUser: "System",
-      description: "Automated verification of refund eligibility completed.",
-      outcome: "Success",
-    },
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await auditApi.getAuditLogs();
+      if (res.data) {
+        setStats(res.data.stats);
+        setLogs(res.data.logs);
+      }
+    } catch (err) {
+      console.error("Failed to fetch logs:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
+  const handleAddNote = async () => {
+    if (entityType === "Select Type" || !entityId || !noteContent) {
+      alert("Please fill in all fields.");
+      return;
+    }
+    setFormLoading(true);
+    try {
+      const res = await auditApi.addManualNote({ entityType, entityId, noteContent });
+      if (res) {
+        setEntityType("Select Type");
+        setEntityId("");
+        setNoteContent("");
+        fetchLogs();
+      }
+    } catch (err) {
+      console.error("Failed to add note:", err);
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const summaryStats = stats ? [
+    { label: "Total Entries", value: stats.totalEntries, color: "#111827" },
+    { label: "Last 24 Hours", value: stats.last24Hours, color: COLORS.PRIMARY_MAIN },
+    { label: "Manual Notes", value: stats.manualNotes, color: COLORS.WARNING_MAIN },
+    { label: "System Events", value: stats.systemEvents, color: COLORS.SUCCESS_MAIN },
+  ] : [
+    { label: "Total Entries", value: "-", color: "#111827" },
+    { label: "Last 24 Hours", value: "-", color: COLORS.PRIMARY_MAIN },
+    { label: "Manual Notes", value: "-", color: COLORS.WARNING_MAIN },
+    { label: "System Events", value: "-", color: COLORS.SUCCESS_MAIN },
   ];
 
   const inputStyle = {
@@ -187,6 +212,8 @@ export default function AdminNotesAudit() {
           >
             <SelectField
               label="Entity Type"
+              value={entityType}
+              onChange={(e) => setEntityType(e.target.value)}
               options={[
                 { label: "Select Type", value: "Select Type" },
                 { label: "Rental", value: "Rental" },
@@ -199,6 +226,8 @@ export default function AdminNotesAudit() {
               <label style={labelStyle}>Entity ID</label>
               <input
                 type="text"
+                value={entityId}
+                onChange={(e) => setEntityId(e.target.value)}
                 placeholder="Enter Rental/Agreement/Case ID"
                 style={inputStyle}
               />
@@ -207,6 +236,8 @@ export default function AdminNotesAudit() {
             <div>
               <label style={labelStyle}>Note Content</label>
               <textarea
+                value={noteContent}
+                onChange={(e) => setNoteContent(e.target.value)}
                 placeholder="Enter internal note or observation..."
                 style={{
                   ...inputStyle,
@@ -216,9 +247,9 @@ export default function AdminNotesAudit() {
               />
             </div>
 
-            <Button style={{ width: "100%", marginTop: "0.5rem" }}>
+            <Button onClick={handleAddNote} disabled={formLoading} style={{ width: "100%", marginTop: "0.5rem" }}>
               <Plus size={18} />
-              <span>Add Note</span>
+              <span>{formLoading ? "Adding Note..." : "Add Note"}</span>
             </Button>
           </div>
         </Card>
@@ -429,104 +460,118 @@ export default function AdminNotesAudit() {
               </tr>
             </thead>
             <tbody>
-              {auditData.map((row, i) => (
-                <tr key={i} style={{ borderBottom: "1px solid #E5E7EB" }}>
-                  <td
-                    style={{
-                      padding: "1.25rem 1.5rem",
-                      fontSize: "0.85rem",
-                      color: "#6B7280",
-                      textAlign: "center",
-                    }}
-                  >
-                    {row.timestamp}
+              {loading ? (
+                <tr>
+                  <td colSpan={8} style={{ padding: "2rem", textAlign: "center", color: "#6B7280" }}>
+                    Loading audit logs...
                   </td>
-                  <td
-                    style={{ padding: "1.25rem 1.5rem", fontSize: "0.85rem" }}
-                  >
-                    <span
+                </tr>
+              ) : logs.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ padding: "2rem", textAlign: "center", color: "#6B7280" }}>
+                    No logs found.
+                  </td>
+                </tr>
+              ) : (
+                logs.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: "1px solid #E5E7EB" }}>
+                    <td
                       style={{
-                        padding: "2px 8px",
-                        borderRadius: "12px",
-                        background: COLORS.PRIMARY_LIGHT,
-                        color: COLORS.INFO_DARK,
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
+                        padding: "1.25rem 1.5rem",
+                        fontSize: "0.85rem",
+                        color: "#6B7280",
                         textAlign: "center",
                       }}
                     >
-                      {row.entityType}
-                    </span>
-                  </td>
-                  <td
-                    style={{
-                      padding: "1.25rem 1.5rem",
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      color: "#111827",
-                      textAlign: "center",
-                    }}
-                  >
-                    {row.entityId}
-                  </td>
-                  <td
-                    style={{
-                      padding: "1.25rem 1.5rem",
-                      fontSize: "0.85rem",
-                      color: "#374151",
-                      textAlign: "center",
-                    }}
-                  >
-                    {row.actionType}
-                  </td>
-                  <td
-                    style={{
-                      padding: "1.25rem 1.5rem",
-                      fontSize: "0.85rem",
-                      color: "#111827",
-                      fontWeight: 500,
-                      textAlign: "center",
-                    }}
-                  >
-                    {row.adminUser}
-                  </td>
-                  <td
-                    style={{
-                      padding: "1.25rem 1.5rem",
-                      fontSize: "0.85rem",
-                      color: "#6B7280",
-                      maxWidth: "300px",
-                      textAlign: "center",
-                    }}
-                  >
-                    {row.description}
-                  </td>
-                  <td
-                    style={{
-                      padding: "1.25rem 1.5rem",
-                      fontSize: "0.85rem",
-                      textAlign: "center",
-                    }}
-                  >
-                    <span
-                      style={{ color: COLORS.SUCCESS_MAIN, fontWeight: 600 }}
+                      {new Date(row.timestamp).toLocaleString()}
+                    </td>
+                    <td
+                      style={{ padding: "1.25rem 1.5rem", fontSize: "0.85rem", textAlign: "center" }}
                     >
-                      {row.outcome}
-                    </span>
-                  </td>
-                  <td
-                    style={{
-                      padding: "1.25rem 1.5rem",
-                      fontSize: "0.85rem",
-                      textAlign: "center",
-                    }}
-                  >
-                    <button style={{ color: "#9CA3AF" }}>
-                      <Eye size={18} color="#2563eb" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      <span
+                        style={{
+                          padding: "2px 8px",
+                          borderRadius: "12px",
+                          background: COLORS.PRIMARY_LIGHT,
+                          color: COLORS.INFO_DARK,
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                          textAlign: "center",
+                        }}
+                      >
+                        {row.entityType}
+                      </span>
+                    </td>
+                    <td
+                      style={{
+                        padding: "1.25rem 1.5rem",
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                        color: "#111827",
+                        textAlign: "center",
+                      }}
+                    >
+                      {row.entityId}
+                    </td>
+                    <td
+                      style={{
+                        padding: "1.25rem 1.5rem",
+                        fontSize: "0.85rem",
+                        color: "#374151",
+                        textAlign: "center",
+                      }}
+                    >
+                      {row.actionType}
+                    </td>
+                    <td
+                      style={{
+                        padding: "1.25rem 1.5rem",
+                        fontSize: "0.85rem",
+                        color: "#111827",
+                        fontWeight: 500,
+                        textAlign: "center",
+                      }}
+                    >
+                      {row.adminUser}
+                    </td>
+                    <td
+                      style={{
+                        padding: "1.25rem 1.5rem",
+                        fontSize: "0.85rem",
+                        color: "#6B7280",
+                        maxWidth: "300px",
+                        textAlign: "center",
+                      }}
+                    >
+                      {row.description}
+                    </td>
+                    <td
+                      style={{
+                        padding: "1.25rem 1.5rem",
+                        fontSize: "0.85rem",
+                        textAlign: "center",
+                      }}
+                    >
+                      <span
+                        style={{ color: COLORS.SUCCESS_MAIN, fontWeight: 600 }}
+                      >
+                        {row.outcome}
+                      </span>
+                    </td>
+                    <td
+                      style={{
+                        padding: "1.25rem 1.5rem",
+                        fontSize: "0.85rem",
+                        textAlign: "center",
+                      }}
+                    >
+                      <button style={{ color: "#9CA3AF" }}>
+                        <Eye size={18} color="#2563eb" />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

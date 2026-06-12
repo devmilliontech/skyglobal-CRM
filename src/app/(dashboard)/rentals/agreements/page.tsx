@@ -183,8 +183,14 @@ export default function AgreementsManagement() {
           page: nextPage,
           limit: 25,
           search: search || undefined,
-          status: appliedFilters.status,
-          agreementType: appliedFilters.type,
+          status:
+            appliedFilters.status === "All Status"
+              ? undefined
+              : appliedFilters.status,
+          agreementType:
+            appliedFilters.type === "Agreement Type"
+              ? undefined
+              : appliedFilters.type,
           searchVehicle: appliedFilters.vehicle === "All Vehicles" ? undefined : appliedFilters.vehicle,
         });
 

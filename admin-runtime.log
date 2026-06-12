@@ -1,0 +1,19 @@
+
+> skyglobal-crm@0.1.0 dev
+> next dev --webpack -p 3001
+
+▲ Next.js 16.2.3 (webpack)
+- Local:         http://localhost:3001
+- Network:       http://192.168.0.158:3001
+- Environments: .env.local
+✓ Ready in 1662ms
+
+○ Compiling /rentals/disputes ...
+ GET /rentals/disputes 200 in 5.6s (next.js: 4.0s, application-code: 1609ms)
+ GET / 200 in 7.9s (next.js: 6.3s, application-code: 1642ms)
+ GET / 200 in 203ms (next.js: 44ms, application-code: 159ms)
+  Reload env: .env.local
+ GET /rentals/disputes 200 in 942ms (next.js: 710ms, application-code: 232ms)
+ GET / 200 in 844ms (next.js: 502ms, application-code: 342ms)
+ GET / 200 in 151ms (next.js: 19ms, application-code: 133ms)
+[?25h
